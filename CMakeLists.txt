@@ -8,3 +8,13 @@ rp6502_executable(hello)
 target_sources(hello PRIVATE
     src/main.c
 )
+
+add_executable(graphictest)
+rp6502_asset(graphictest 0x1E100 images/spaceship.bin)
+rp6502_executable(graphictest
+    spaceship.bin.rp6502
+)
+
+target_sources(graphictest PRIVATE
+    src/graphictest.c
+)
