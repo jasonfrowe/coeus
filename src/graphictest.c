@@ -9,25 +9,24 @@
 #define SPACESHIP_DATA 0xE100 // 
 
 static const int16_t sin_fix8[] = {
-      0,  66, 128, 181, 222, 247, 256, 247, 222, 181, 128,  66,
-      0, -66,-128,-181,-222,-247,-256,-247,-222,-181,-128, -66,
-      0
+    0, 65, 127, 180, 220, 246, 255, 246, 220, 180, 127, 65, 
+    0, -65, -127, -180, -220, -246, -255, -246, -220, -180, 
+    -127, -65, 0
 };
 
 static const int16_t cos_fix8[] = {
-    256, 247, 222, 181, 128,  66,   0, -66,-128,-181,-222,-247,
-   -256,-247,-222,-181,-120, -66,   0,  66, 128, 181, 222, 247,
-    256
+    255, 246, 220, 180, 127, 65, 0, -65, -127, -180, -220, 
+    -246, -255, -246, -220, -180, -127, -65, 0, 65, 127, 180, 
+    220, 246, 255
 };
 
 static const int16_t t2_fix8[] = {
-      0,  37,  81, 128, 175, 219, 256, 285, 303, 309, 303, 285,
-    256, 219, 175, 128,  81,  37,   0, -29, -47, -53, -47, -29,
-      0
+    0, 36, 80, 127, 173, 217, 254, 283, 301, 308, 301, 283, 
+    254, 217, 173, 127, 80, 36, 0, -29, -47, -54, -47, -29, 0
 };
 
 uint8_t ri = 0;
-uint8_t ri_max = 24;
+uint8_t ri_max = 23;
 
 struct __VIA6522 {
     unsigned char pb;
@@ -53,8 +52,8 @@ uint8_t yellow = 240 - 16*4;
 // Initial position of spacecraft
 int x = 100;
 int y = 100;
-int vx = 1;
-int vy = 1;
+int vx = 0;
+int vy = 0;
 
 static inline void set(int x, int y, int colour)
 {
@@ -140,6 +139,10 @@ int main(void)
 {
     setup();
 
+    // Makes rotation of ship slower
+    uint16_t iframe = 0;
+    uint16_t iframe_old = 3;
+
     uint8_t v; //Testing for V-sync
 
     uint8_t r1 = 0;
@@ -149,25 +152,40 @@ int main(void)
     int xtry = x;
     int ytry = y;
 
+    int xrem = 0;
+    int yrem = 0;
+
+    int vxapp = 0;
+    int vyapp = 0;
+
     int val;
 
+    uint8_t tdelay = 0;
+    uint8_t tdelay_max = 8;
+    uint8_t tcount = 0;
+
+    int thrust_x = 0;
+    int thrust_y = 0;
+
+    VIAp.ddra = 0; //GPIO as input (probably only need to do once...)
+
     while (k == 0) { //Infinite Game Loop
-    
+
         uint16_t i = 0;
         uint16_t j = 0;
         uint16_t ii = 0;
-        while (i < 320) {
-            j = 0;
-            while (j < 180){
-                r1 = random(0, 100);
-                if (r1 < 10){
-                    c1 = j + random(20, 50);
-                } else{
-                    c1 = 0;
-                }
+        // while (i < 320) {
+        //     j = 0;
+        //     while (j < 180){
+        //         r1 = random(0, 100);
+        //         if (r1 < 10){
+        //             c1 = j + random(20, 50);
+        //         } else{
+        //             c1 = 0;
+        //         }
                 
-                set(i, j, c1);
-                j++;
+        //         set(i, j, c1);
+        //         j++;
 
                 if (RIA.vsync == v)
                     continue;
@@ -200,43 +218,8 @@ int main(void)
 
                 // Arcade Stick via GPIO
 
-                VIAp.ddra = 0; //GPIO as input (probably only need to do once...)
-
                 vx=0; 
                 vy=0;
-                if (VIAp.pa > 0){
-
-                    if (VIAp.pa & 0x01){
-                        vy -= cos_fix8[ri] >> 7;
-                        vx -= sin_fix8[ri] >> 7;
-                    }
-                    if ((VIAp.pa & 0x02) >> 1){
-                        vy += cos_fix8[ri] >> 7;
-                        vx += sin_fix8[ri] >> 7;
-                    }
-
-                    //Rotate counter
-                    if ((VIAp.pa & 0x04) >> 2){
-                        // vx-=1;
-                        // update rotation
-                        if (ri == ri_max){
-                            ri = 0;
-                        } else {
-                            ri += 1;
-                        } 
-                    }
-
-                    if ((VIAp.pa & 0x08) >> 3){
-                        // vx+=1;
-                        // update rotation
-                        if (ri == 0){
-                            ri = ri_max;
-                        } else {
-                            ri -= 1;
-                        }
-                    }
-
-                }
 
                 // Copy positions during vblank
                 RIA.step0 = sizeof(vga_mode4_asprite_t);
@@ -261,26 +244,85 @@ int main(void)
                 xram0_struct_set(SPRITE_CONFIG, vga_mode4_asprite_t, transform[2],  16*t2_fix8[ri]);
                 xram0_struct_set(SPRITE_CONFIG, vga_mode4_asprite_t, transform[3],  sin_fix8[ri]);
                 xram0_struct_set(SPRITE_CONFIG, vga_mode4_asprite_t, transform[4],  cos_fix8[ri]);
-                xram0_struct_set(SPRITE_CONFIG, vga_mode4_asprite_t, transform[5],  16*t2_fix8[ri_max - ri - 1]);
+                xram0_struct_set(SPRITE_CONFIG, vga_mode4_asprite_t, transform[5],  
+                    16*t2_fix8[ri_max - ri + 1]);
 
+
+                if (iframe >= iframe_old){
+                    iframe = 0;
+
+                    if (VIAp.pa > 0){
+
+                        //Rotate counter
+                        if ((VIAp.pa & 0x04) >> 2){
+                            // vx-=1;
+                            // update rotation
+                            if (ri == ri_max){
+                                ri = 0;
+                            } else {
+                                ri += 1;
+                            } 
+                        }
+
+                        if ((VIAp.pa & 0x08) >> 3){
+                            // vx+=1;
+                            // update rotation
+                            if (ri == 0){
+                                ri = ri_max;
+                            } else {
+                                ri -= 1;
+                            }
+                        }
+
+                    }
+                }
+                iframe+=1;
+
+                if (VIAp.pa > 0){
+                    // Up direction
+                    if (VIAp.pa & 0x01){
+                        vy = -cos_fix8[ri];
+                        vx = -sin_fix8[ri];
+                        tdelay = 1;
+                        thrust_x = vx;
+                        thrust_y = vy;
+                    }
+                    // Down direction
+                    if ((VIAp.pa & 0x02) >> 1){
+                        // vy += cos_fix8[ri];
+                        // vx += sin_fix8[ri];
+                    }
+                }
+                
                 //Update position
-                xtry = x + vx;
-                ytry = y + vy;
+                vxapp = ( (vx + xrem + (thrust_x >> tdelay) ) >> 7);
+                vyapp = ( (vy + yrem + (thrust_y >> tdelay) ) >> 7);
+                xrem = vx + xrem + (thrust_x >> tdelay) - vxapp*128;
+                yrem = vy + yrem + (thrust_y >> tdelay) - vyapp*128;
+                xtry = x + vxapp;
+                ytry = y + vyapp;
 
+                //Use thrust...
+                if (tdelay < tdelay_max && tcount > 100){
+                    tdelay += 1;
+                    tcount = 0;
+                }
+                if (tdelay >= tdelay_max){
+                    thrust_x = 0;
+                    thrust_y = 0;
+                }
+                tcount += 1;
+
+                // Keep spacecraft in bounds
                 if (xtry > 0 && xtry < 320 - 16)
                     x = xtry;
                 if (ytry > 0 && ytry < 180 - 16)
                     y = ytry;
+                set(x+8, y+8, 0xff);
+            
+        //     i++; 
+        // }
+    // }
 
-                
-
-
-            }
-            i++; 
-
-
-        }
-
-
-    }
-}
+    } //end of infinite loop
+}// end of main
