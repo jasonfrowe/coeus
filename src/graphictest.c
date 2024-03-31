@@ -4,7 +4,15 @@
 #include <stdbool.h>
 // #include "usb_hid_keys.h"
 
+//XRAM Memory addresses
+#define BITMAP_CONFIG  0xFF00  //Bitmap Config
+#define SPRITE_CONFIG  0xFF10  //Spacecraft Sprite Config
+#define EARTH_CONFIG   0xED80  //Earth Sprite Config
+#define SPACESHIP_DATA 0xE100  //Spaceship Sprite
+#define EARTH_DATA     0xE300  //Earth Data
+
 #define MAPSIZE 2048 // Size of world (world coordinates)
+#define MAPSIZED2 1024 
 #define SWIDTH 320 // width of visible screen
 #define SHEIGHT 180 // height of visible screen
 
@@ -32,11 +40,6 @@ static int16_t star_y[NSTAR] = {0};      //Y-position -- World coordinates
 static int16_t star_x_old[NSTAR] = {0};  //prev X-position -- World coordinates
 static int16_t star_y_old[NSTAR] = {0};  //prev Y-position -- World coordinates
 static uint8_t star_colour[NSTAR] = {0};  //Colour
-
-//Memory addresses
-#define BITMAP_CONFIG 0xFF00
-#define SPRITE_CONFIG 0xFF10
-#define SPACESHIP_DATA 0xE100 //Extended RAM
 
 // access to 6522
 struct __VIA6522 {
@@ -75,6 +78,10 @@ static const uint8_t ri_max = 23; // max rotations
 // Spacecraft properties
 #define SHIP_ROT_SPEED 3 // How fast the spaceship can rotate, must be >= 1. 
 
+// Earth properties
+static int16_t earth_x = SWIDTH/2 - 16;
+static int16_t earth_y = SHEIGHT/2 - 16;
+
 // Initial position and velocity of spacecraft
 static int x = 160;  //Screen-coordinates. 
 static int y = 90;
@@ -83,7 +90,7 @@ static int vy = 0;
 
 // Properties for bullets
 #define NBULLET 16  // maximum good-guy bullets
-#define NBULLET_TIMER_MAX 10 // Sets interval for new bullets when fire button is held
+#define NBULLET_TIMER_MAX 8 // Sets interval for new bullets when fire button is held
 static const uint8_t bullet_v = 4; //Bullet Speed
 static int16_t bvx = 0;
 static int16_t bvy = 0;
@@ -96,7 +103,7 @@ static uint16_t bullet_x[NBULLET] = {0};     //X-position
 static uint16_t bullet_y[NBULLET] = {0};     //Y-position
 static int8_t bullet_status[NBULLET] = {0};  //Status of bullets
 static uint8_t bullet_c = 0;                 //Counter for bullets
-static uint8_t bullet_timer = 0;             //delay timer for new bullets
+static uint16_t bullet_timer = 0;            //delay timer for new bullets
 
 // Routine for placing a single dot on the screen
 static inline void set(int16_t x, int16_t y, uint8_t colour)
@@ -120,6 +127,53 @@ uint16_t random(uint16_t low_limit, uint16_t high_limit)
     return (uint16_t)((rand() % (high_limit-low_limit)) + low_limit);
 }
 
+static void earth_setup()
+{
+    xram0_struct_set(EARTH_CONFIG, vga_mode4_sprite_t, x_pos_px, earth_x);
+    xram0_struct_set(EARTH_CONFIG, vga_mode4_sprite_t, y_pos_px, earth_y);
+    xram0_struct_set(EARTH_CONFIG, vga_mode4_sprite_t, xram_sprite_ptr, EARTH_DATA);
+    xram0_struct_set(EARTH_CONFIG, vga_mode4_sprite_t, log_size, 5);
+    xram0_struct_set(EARTH_CONFIG, vga_mode4_sprite_t, has_opacity_metadata, false);
+
+    xregn(1, 0, 1, 5, 4, 0, EARTH_CONFIG, 1, 0);
+}
+
+static void earth_update(int16_t dx, int16_t dy)
+{
+    // Update positions
+
+    earth_x = earth_x - dx;
+        if (earth_x <= -MAPSIZED2){
+            earth_x += MAPSIZED2;
+        }
+        if (earth_x > MAPSIZED2){
+            earth_x -= MAPSIZED2;
+        }
+
+    earth_y = earth_y - dy;
+        if (earth_y <= -MAPSIZED2){
+            earth_y += MAPSIZED2;
+        }
+        if (earth_y > MAPSIZED2){
+            earth_y -= MAPSIZED2;
+        }
+
+
+    RIA.step0 = sizeof(vga_mode4_sprite_t);
+    RIA.step1 = sizeof(vga_mode4_sprite_t);
+    RIA.addr0 = EARTH_CONFIG;
+    RIA.addr1 = EARTH_CONFIG + 1;
+
+    RIA.rw0 = earth_x & 0xff;
+    RIA.rw1 = (earth_x >> 8) & 0xff;
+
+    RIA.addr0 = EARTH_CONFIG + 2;
+    RIA.addr1 = EARTH_CONFIG + 3;
+
+    RIA.rw0 = earth_y & 0xff;
+    RIA.rw1 = (earth_y >> 8) & 0xff;
+}
+
 static void setup()
 {
 
@@ -134,7 +188,7 @@ static void setup()
     xram0_struct_set(BITMAP_CONFIG, vga_mode3_config_t, xram_palette_ptr, 0xFFFF);
 
     // xregn : address 1, 0 ,1 then we are setting '3' bits.  Thoses bits will be set to 3, 3, 0xFF00
-    xregn(1, 0, 1, 3, 3, 3, 0xFF00); // Mode 3, 4-bit colour.  2nd last is bit depth, last is address config
+    xregn(1, 0, 1, 4, 3, 3, 0xFF00, 0); // Mode 3, 4-bit colour.  2nd last is bit depth, last is address config
 
     xram0_struct_set(SPRITE_CONFIG, vga_mode4_asprite_t, transform[0],  cos_fix8[ri]);
     xram0_struct_set(SPRITE_CONFIG, vga_mode4_asprite_t, transform[1], -sin_fix8[ri]);
@@ -145,11 +199,11 @@ static void setup()
 
     xram0_struct_set(SPRITE_CONFIG, vga_mode4_asprite_t, x_pos_px, x);
     xram0_struct_set(SPRITE_CONFIG, vga_mode4_asprite_t, y_pos_px, y);
-    xram0_struct_set(SPRITE_CONFIG, vga_mode4_asprite_t, xram_sprite_ptr, 0xE100);
+    xram0_struct_set(SPRITE_CONFIG, vga_mode4_asprite_t, xram_sprite_ptr, SPACESHIP_DATA);
     xram0_struct_set(SPRITE_CONFIG, vga_mode4_asprite_t, log_size, 4);
     xram0_struct_set(SPRITE_CONFIG, vga_mode4_asprite_t, has_opacity_metadata, false);
 
-    xregn(1, 0, 1, 5, 4, 1, SPRITE_CONFIG, 1, 0);
+    xregn(1, 0, 1, 5, 4, 1, SPRITE_CONFIG, 1, 1);
 
     // Clear out extended memory for bit-map video
     
@@ -213,6 +267,7 @@ int main(void)
 
     setup(); //Set up Graphics
     setup_stars(); // Set up stars
+    earth_setup(); // Set up Earth.
 
     //Plot stars
     int16_t dx = 0;
@@ -340,9 +395,10 @@ int main(void)
                         }
                     }
                 }
-            } else {
-                bullet_timer = NBULLET_TIMER_MAX; //If button is released we can immediately fire again.
-            }
+            } 
+            // else { // Does not work?? 
+            //     bullet_timer = NBULLET_TIMER_MAX; //If button is released we can immediately fire again.
+            // }
 
             // Right fire button -- EMP
             if ((VIAp.pa & 0x50) == 0x30){
@@ -416,9 +472,10 @@ int main(void)
             }
         }
 
-        //Update stars
+        //Update stars and stationary sprites
         if (dx != 0 || dy != 0){
             plot_stars(dx, dy);
+            earth_update(dx, dy);
             dx = 0;
             dy = 0;
         }
