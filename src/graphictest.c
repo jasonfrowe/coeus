@@ -4,19 +4,36 @@
 #include <stdbool.h>
 // #include "usb_hid_keys.h"
 
-#define MAPSIZE 1024 // Size of world
+#define MAPSIZE 2048 // Size of world (world coordinates)
 #define SWIDTH 320 // width of visible screen
 #define SHEIGHT 180 // height of visible screen
 
 //Boundary for scrolling
-#define BX1 = 40
-#define BX2 = SHEIGHT - 40
-#define BY1 = 40
-#define BY2 = SWIDTH - 40
+#define BBX 100
+#define BBY 60
+static int16_t BX1 = BBX;
+static int16_t BX2 = SWIDTH - BBX;
+static int16_t BY1 = BBY;
+static int16_t BY2 = SHEIGHT - BBY;
 
-//BKG Stars
-#define NSTARS 64
+//Screen position at start (world coordinates)
+//This position labels 0,0 on the screen 
+static uint16_t sx = MAPSIZE / 2;
+static uint16_t sy = MAPSIZE / 2;
+static uint16_t sx_old = MAPSIZE / 2;
+static uint16_t sy_old = MAPSIZE / 2;
 
+//Background stars
+#define NSTAR 64
+#define STARFIELD_X 512 //Size of starfield
+#define STARFIELD_Y 256
+static int16_t star_x[NSTAR] = {0};      //X-position -- World coordinates
+static int16_t star_y[NSTAR] = {0};      //Y-position -- World coordinates
+static int16_t star_x_old[NSTAR] = {0};  //prev X-position -- World coordinates
+static int16_t star_y_old[NSTAR] = {0};  //prev Y-position -- World coordinates
+static uint8_t star_colour[NSTAR] = {0};  //Colour
+
+//Memory addresses
 #define BITMAP_CONFIG 0xFF00
 #define SPRITE_CONFIG 0xFF10
 #define SPACESHIP_DATA 0xE100 //Extended RAM
@@ -52,22 +69,28 @@ static const int16_t t2_fix8[] = {
     254, 217, 173, 127, 80, 36, 0, -29, -47, -54, -47, -29, 0
 };
 
-static uint8_t ri = 0; // current rotation info for spaceship
+static uint8_t ri = 0;            // current rotation info for spaceship
 static const uint8_t ri_max = 23; // max rotations 
 
 // Spacecraft properties
 #define SHIP_ROT_SPEED 3 // How fast the spaceship can rotate, must be >= 1. 
 
 // Initial position and velocity of spacecraft
-static int x = 160;
+static int x = 160;  //Screen-coordinates. 
 static int y = 90;
 static int vx = 0;
 static int vy = 0;
 
 // Properties for bullets
 #define NBULLET 16  // maximum good-guy bullets
-#define NBULLET_TIMER_MAX 5 // Sets interval for new bullets when fire button is held
+#define NBULLET_TIMER_MAX 10 // Sets interval for new bullets when fire button is held
 static const uint8_t bullet_v = 4; //Bullet Speed
+static int16_t bvx = 0;
+static int16_t bvy = 0;
+static int16_t bvxapp = 0;
+static int16_t bvyapp = 0;
+static int16_t bvxrem[NBULLET] = {0};
+static int16_t bvyrem[NBULLET] = {0};
 
 static uint16_t bullet_x[NBULLET] = {0};     //X-position
 static uint16_t bullet_y[NBULLET] = {0};     //Y-position
@@ -76,12 +99,13 @@ static uint8_t bullet_c = 0;                 //Counter for bullets
 static uint8_t bullet_timer = 0;             //delay timer for new bullets
 
 // Routine for placing a single dot on the screen
-static inline void set(int x, int y, int colour)
+static inline void set(int16_t x, int16_t y, uint8_t colour)
 {
     RIA.addr0 =  (x / 1) + (320 / 1 * y);
     RIA.step0 = 0;
-    uint8_t bit = colour;
-    RIA.rw0 = bit;
+    // uint8_t bit = colour;
+    // RIA.rw0 = bit;
+    RIA.rw0 = colour;
 }
 
 //Functions for generating randoms
@@ -136,10 +160,64 @@ static void setup()
 
 }
 
+void setup_stars() //Set up random positions and colours for our stars.
+{
+    for (uint8_t i = 0; i < NSTAR; i++) {
+
+        star_x[i] = random(1, STARFIELD_X);
+        star_y[i] = random(1, STARFIELD_Y);
+        star_colour[i] = random(1, 255);
+        star_x_old[i] = star_x[i];
+        star_y_old[i] = star_y[i];
+
+    }
+}
+
+void plot_stars(int16_t dx, int16_t dy)
+{
+    for (uint8_t i = 0; i < NSTAR; i++){
+
+        // Clear previous stars
+        if (star_x_old[i] > 0 && star_x_old[i] < 320 && star_y_old[i] > 0 && star_y_old[i] < 180){
+            set(star_x_old[i], star_y_old[i], 0x00);
+        }
+
+        star_x[i] = star_x_old[i] - dx;
+        if (star_x[i] <= 0){
+            star_x[i] += STARFIELD_X;
+        }
+        if (star_x[i] > STARFIELD_X){
+            star_x[i] -= STARFIELD_X;
+        }
+        star_x_old[i] = star_x[i];
+        
+        star_y[i] = star_y_old[i] - dy;
+        if (star_y[i] <= 0){
+            star_y[i] += STARFIELD_Y;
+        }
+        if (star_y[i] > STARFIELD_Y){
+            star_y[i] -= STARFIELD_Y;
+        }
+        star_y_old[i] = star_y[i];
+
+         if (star_x[i] > 0 && star_x[i] < 320 && star_y[i] > 0 && star_y[i] < 180){
+            set(star_x[i], star_y[i], star_colour[i]);
+            // printf("stars %d, %d, %d \n", star_x[i], star_y[i], star_colour[i]);
+        } 
+
+    }
+}
+
 int main(void)
 {
 
     setup(); //Set up Graphics
+    setup_stars(); // Set up stars
+
+    //Plot stars
+    int16_t dx = 0;
+    int16_t dy = 0;
+    plot_stars(dx, dy);
 
     // Makes rotation of ship slower
     uint16_t iframe = 0;
@@ -164,6 +242,9 @@ int main(void)
 
     int thrust_x = 0;       // Initialize amount of thrust applied (acts like momentum)
     int thrust_y = 0;
+
+    int16_t thx = 0; //Checking thrust for max allowed values.
+    int16_t thy = 0;
 
     VIAp.ddra = 0; //set GPIO as input (probably only need to do once...)
 
@@ -246,17 +327,21 @@ int main(void)
             }
 
             // Left fire button -- Bullets 
-            if ((VIAp.pa & 0x50) == 0x50 && bullet_timer > NBULLET_TIMER_MAX){
-                bullet_timer = 0;
-                if (bullet_status[bullet_c] < 0){
-                    bullet_status[bullet_c] = ri;
-                    bullet_x[bullet_c] = x+8;
-                    bullet_y[bullet_c] = y+8;
-                    bullet_c += 1;
-                    if (bullet_c >= NBULLET){
-                        bullet_c = 0;
+            if ((VIAp.pa & 0x50) == 0x50){
+                if (bullet_timer > NBULLET_TIMER_MAX){
+                    bullet_timer = 0;
+                    if (bullet_status[bullet_c] < 0){
+                        bullet_status[bullet_c] = ri;
+                        bullet_x[bullet_c] = x+8;
+                        bullet_y[bullet_c] = y+8;
+                        bullet_c += 1;
+                        if (bullet_c >= NBULLET){
+                            bullet_c = 0;
+                        }
                     }
                 }
+            } else {
+                bullet_timer = NBULLET_TIMER_MAX; //If button is released we can immediately fire again.
             }
 
             // Right fire button -- EMP
@@ -276,19 +361,27 @@ int main(void)
         ytry = y + vyapp;
 
         //Update thrust if joystick is held.
-        if (abs(thrust_x) < 1024){
-            thrust_x += vx >> 4;
+        thx = thrust_x + (vx >> 4);
+        if (thx < 1024 && thx > -1024){
+            thrust_x = thx;
         }
-        if (abs(thrust_y) < 1024){
-            thrust_y += vy >> 4;
+        thy = thrust_y + (vy >> 4);
+        if (thy < 1024 && thy > -1024){
+            thrust_y = thy;
         }
 
         //Update momentum by applying friction 
         if (tdelay < tdelay_max && tcount > 50){
             tdelay += 1;
             tcount = 0;
-            thrust_x = thrust_x >> 1;
-            thrust_y = thrust_y >> 1;
+            // thrust_x = thrust_x >> 1;
+            // thrust_y = thrust_y >> 1;
+            if (vx == 0){
+                thrust_x = thrust_x >> 1;
+            }
+            if (vy == 0){
+                thrust_y = thrust_y >> 1;
+            }
         }
         if (tdelay >= tdelay_max){
             thrust_x = 0;
@@ -297,25 +390,62 @@ int main(void)
         tcount += 1;
 
         // Keep spacecraft in bounds
-        if (xtry > 0 && xtry < 320 - 16)
+        if (xtry > BX1 && xtry < BX2){
             x = xtry;
-        if (ytry > 0 && ytry < 180 - 16)
+        } else {
+            dx = (xtry - x);
+            sx += dx;
+            if (sx > MAPSIZE){
+                sx -= MAPSIZE;
+            }
+            if (sx <= 0){
+                sx += MAPSIZE;
+            }
+        }
+            
+        if (ytry > BY1 && ytry < BY2){
             y = ytry;
+        } else {
+            dy = (ytry - y);
+            sy += dy;
+            if (sy > MAPSIZE){
+                sy -= MAPSIZE;
+            }
+            if (sy <= 0){
+                sy += MAPSIZE;
+            }
+        }
+
+        //Update stars
+        if (dx != 0 || dy != 0){
+            plot_stars(dx, dy);
+            dx = 0;
+            dy = 0;
+        }
 
         //Update bullets
         for (uint8_t ii = 0; ii < NBULLET; ii++) {
             if (bullet_status[ii] >= 0){
                 set(bullet_x[ii], bullet_y[ii], 0x00);
-                bullet_x[ii] -= sin_fix8[bullet_status[ii]] >> 6;
-                bullet_y[ii] -= cos_fix8[bullet_status[ii]] >> 6;
+
+                bvx = -sin_fix8[bullet_status[ii]];
+                bvy = -cos_fix8[bullet_status[ii]];
+                bvxapp = ( (bvx + bvxrem[ii]) >> 6);
+                bvyapp = ( (bvy + bvyrem[ii]) >> 6);
+                bvxrem[ii] = bvx + bvxrem[ii] - bvxapp * 64;
+                bvyrem[ii] = bvy + bvyrem[ii] - bvyapp * 64;
+                bullet_x[ii] += bvxapp;
+                bullet_y[ii] += bvyapp;
+
+                // bullet_x[ii] -= sin_fix8[bullet_status[ii]] >> 6;
+                // bullet_y[ii] -= cos_fix8[bullet_status[ii]] >> 6;
+
                 if (bullet_x[ii] > 0 && bullet_x[ii] < 320 && bullet_y[ii] > 0 && bullet_y[ii] < 180){
                     set(bullet_x[ii], bullet_y[ii], 0xFF);
                 } else {
                     bullet_status[ii] = -1;
                 }
-                
             }
-
         }
             
 
