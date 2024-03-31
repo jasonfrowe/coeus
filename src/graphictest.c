@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include "usb_hid_keys.h"
+// #include "usb_hid_keys.h"
 
 
 #define SPRITE_CONFIG 0xFF10
@@ -25,9 +25,10 @@ static const int16_t t2_fix8[] = {
     254, 217, 173, 127, 80, 36, 0, -29, -47, -54, -47, -29, 0
 };
 
-uint8_t ri = 0;
-uint8_t ri_max = 23;
+uint8_t ri = 0; // current rotation location for spaceship
+uint8_t ri_max = 23; // max rotations 
 
+// access to 6522
 struct __VIA6522 {
     unsigned char pb;
     unsigned char pa;
@@ -54,6 +55,16 @@ int x = 100;
 int y = 100;
 int vx = 0;
 int vy = 0;
+
+// Array for bullets
+#define NBULLET 16
+#define NBULLET_TIMER_MAX 5
+uint16_t bullet_x[NBULLET] = {0}; //X-position
+uint16_t bullet_y[NBULLET] = {0}; //Y-position
+int8_t bullet_status[NBULLET] = {0};         //Status of bullets
+uint8_t bullet_c = 0;               //Counter for bullets
+uint8_t bullet_v = 4;              //Bullet Speed
+uint8_t bullet_timer = 0;       // delay for new bullets
 
 static inline void set(int x, int y, int colour)
 {
@@ -174,155 +185,153 @@ int main(void)
         uint16_t i = 0;
         uint16_t j = 0;
         uint16_t ii = 0;
-        // while (i < 320) {
-        //     j = 0;
-        //     while (j < 180){
-        //         r1 = random(0, 100);
-        //         if (r1 < 10){
-        //             c1 = j + random(20, 50);
-        //         } else{
-        //             c1 = 0;
-        //         }
-                
-        //         set(i, j, c1);
-        //         j++;
 
-                if (RIA.vsync == v)
-                    continue;
-                v = RIA.vsync;
+        if (RIA.vsync == v)
+            continue;
+        v = RIA.vsync;
 
-                //Joystick
-                
-                // uint8_t gp_x;
-                // RIA.addr0 = KEYBOARD_INPUT;
-                // gp_x = RIA.rw0;
-                // if (gp_x > 200){
-                //     vx *= -1;
-                // }
+        // Arcade Stick via GPIO
 
-                //Keyboard
-                // fill the keystates bitmask array
+        vx=0; 
+        vy=0;
 
-                // for (ii = 0; ii < KEYBOARD_BYTES; ii++) {
-                //     uint8_t new_keys;
-                //     RIA.addr0 = KEYBOARD_INPUT + ii;
-                //     new_keys = RIA.rw0;
-                //     keystates[ii] = new_keys;
-                // }
+        // Copy positions during vblank
+        RIA.step0 = sizeof(vga_mode4_asprite_t);
+        RIA.step1 = sizeof(vga_mode4_asprite_t);
+        RIA.addr0 = SPRITE_CONFIG + 12;
+        RIA.addr1 = SPRITE_CONFIG + 13;
 
-                // if (!(keystates[0] & 1)) {
-                //     if (key(KEY_RIGHT)){
-                //         vx *= -1;
-                //     }
-                // }
+        val = x;
+        RIA.rw0 = val & 0xff;
+        RIA.rw1 = (val >> 8) & 0xff;
 
-                // Arcade Stick via GPIO
+        RIA.addr0 = SPRITE_CONFIG + 14;
+        RIA.addr1 = SPRITE_CONFIG + 15;
 
-                vx=0; 
-                vy=0;
+        val = y;
+        RIA.rw0 = val & 0xff;
+        RIA.rw1 = (val >> 8) & 0xff;
 
-                // Copy positions during vblank
-                RIA.step0 = sizeof(vga_mode4_asprite_t);
-                RIA.step1 = sizeof(vga_mode4_asprite_t);
-                RIA.addr0 = SPRITE_CONFIG + 12;
-                RIA.addr1 = SPRITE_CONFIG + 13;
-
-                val = x;
-                RIA.rw0 = val & 0xff;
-                RIA.rw1 = (val >> 8) & 0xff;
-
-                RIA.addr0 = SPRITE_CONFIG + 14;
-                RIA.addr1 = SPRITE_CONFIG + 15;
-
-                val = y;
-                RIA.rw0 = val & 0xff;
-                RIA.rw1 = (val >> 8) & 0xff;
-
-                // Update rotation
-                xram0_struct_set(SPRITE_CONFIG, vga_mode4_asprite_t, transform[0],  cos_fix8[ri]);
-                xram0_struct_set(SPRITE_CONFIG, vga_mode4_asprite_t, transform[1], -sin_fix8[ri]);
-                xram0_struct_set(SPRITE_CONFIG, vga_mode4_asprite_t, transform[2],  16*t2_fix8[ri]);
-                xram0_struct_set(SPRITE_CONFIG, vga_mode4_asprite_t, transform[3],  sin_fix8[ri]);
-                xram0_struct_set(SPRITE_CONFIG, vga_mode4_asprite_t, transform[4],  cos_fix8[ri]);
-                xram0_struct_set(SPRITE_CONFIG, vga_mode4_asprite_t, transform[5],  
-                    16*t2_fix8[ri_max - ri + 1]);
+        // Update rotation
+        xram0_struct_set(SPRITE_CONFIG, vga_mode4_asprite_t, transform[0],  cos_fix8[ri]);
+        xram0_struct_set(SPRITE_CONFIG, vga_mode4_asprite_t, transform[1], -sin_fix8[ri]);
+        xram0_struct_set(SPRITE_CONFIG, vga_mode4_asprite_t, transform[2],  16*t2_fix8[ri]);
+        xram0_struct_set(SPRITE_CONFIG, vga_mode4_asprite_t, transform[3],  sin_fix8[ri]);
+        xram0_struct_set(SPRITE_CONFIG, vga_mode4_asprite_t, transform[4],  cos_fix8[ri]);
+        xram0_struct_set(SPRITE_CONFIG, vga_mode4_asprite_t, transform[5],  
+            16*t2_fix8[ri_max - ri + 1]);
 
 
-                if (iframe >= iframe_old){
-                    iframe = 0;
+        if (iframe >= iframe_old){
+            iframe = 0;
 
-                    if (VIAp.pa > 0){
+            if (VIAp.pa > 0){
 
-                        //Rotate counter
-                        if ((VIAp.pa & 0x04) >> 2){
-                            // vx-=1;
-                            // update rotation
-                            if (ri == ri_max){
-                                ri = 0;
-                            } else {
-                                ri += 1;
-                            } 
-                        }
+                //Rotate counter
+                if ((VIAp.pa & 0x04) >> 2){
+                    // vx-=1;
+                    // update rotation
+                    if (ri == ri_max){
+                        ri = 0;
+                    } else {
+                        ri += 1;
+                    } 
+                }
 
-                        if ((VIAp.pa & 0x08) >> 3){
-                            // vx+=1;
-                            // update rotation
-                            if (ri == 0){
-                                ri = ri_max;
-                            } else {
-                                ri -= 1;
-                            }
-                        }
-
+                if ((VIAp.pa & 0x08) >> 3){
+                    // vx+=1;
+                    // update rotation
+                    if (ri == 0){
+                        ri = ri_max;
+                    } else {
+                        ri -= 1;
                     }
                 }
-                iframe+=1;
 
-                if (VIAp.pa > 0){
-                    // Up direction
-                    if (VIAp.pa & 0x01){
-                        vy = -cos_fix8[ri];
-                        vx = -sin_fix8[ri];
-                        tdelay = 1;
-                        thrust_x = vx;
-                        thrust_y = vy;
+            }
+        }
+        iframe+=1;
+
+        if (VIAp.pa > 0){
+            // Up direction
+            if (VIAp.pa & 0x01){
+                vy = -cos_fix8[ri];
+                vx = -sin_fix8[ri];
+                tdelay = 0;
+            }
+            // Down direction
+            if ((VIAp.pa & 0x02) >> 1){
+                // vy += cos_fix8[ri];
+                // vx += sin_fix8[ri];
+            }
+
+            // Fire button
+            if ((VIAp.pa & 0x50) == 0x50 && bullet_timer > NBULLET_TIMER_MAX){
+                bullet_timer = 0;
+                if (bullet_status[bullet_c] < 0){
+                    bullet_status[bullet_c] = ri;
+                    bullet_x[bullet_c] = x+8;
+                    bullet_y[bullet_c] = y+8;
+                    bullet_c += 1;
+                    if (bullet_c >= NBULLET){
+                        bullet_c = 0;
                     }
-                    // Down direction
-                    if ((VIAp.pa & 0x02) >> 1){
-                        // vy += cos_fix8[ri];
-                        // vx += sin_fix8[ri];
-                    }
+                }
+            }
+        }
+        bullet_timer += 1;
+        
+        //Update position
+        vxapp = ( (vx + xrem + thrust_x ) >> 9);
+        vyapp = ( (vy + yrem + thrust_y ) >> 9);
+        xrem = vx + xrem + thrust_x - vxapp * 512;
+        yrem = vy + yrem + thrust_y - vyapp * 512;
+        xtry = x + vxapp;
+        ytry = y + vyapp;
+
+        if (abs(thrust_x) < 1024){
+            thrust_x += vx >> 4;
+        }
+        if (abs(thrust_y) < 1024){
+            thrust_y += vy >> 4;
+        }
+
+        //Update momentum...
+        if (tdelay < tdelay_max && tcount > 50){
+            tdelay += 1;
+            tcount = 0;
+            thrust_x = thrust_x >> 1;
+            thrust_y = thrust_y >> 1;
+        }
+        if (tdelay >= tdelay_max){
+            thrust_x = 0;
+            thrust_y = 0;
+        }
+        tcount += 1;
+
+        // Keep spacecraft in bounds
+        if (xtry > 0 && xtry < 320 - 16)
+            x = xtry;
+        if (ytry > 0 && ytry < 180 - 16)
+            y = ytry;
+        // set(x+8, y+8, 0xff);
+
+        //Update bullets
+        for (ii = 0; ii < NBULLET; ii++) {
+            if (bullet_status[ii] >= 0){
+                set(bullet_x[ii], bullet_y[ii], 0x00);
+                bullet_x[ii] -= sin_fix8[bullet_status[ii]] >> 6;
+                bullet_y[ii] -= cos_fix8[bullet_status[ii]] >> 6;
+                if (bullet_x[ii] > 0 && bullet_x[ii] < 320 && bullet_y[ii] > 0 && bullet_y[ii] < 180){
+                    set(bullet_x[ii], bullet_y[ii], 0xFF);
+                } else {
+                    bullet_status[ii] = -1;
                 }
                 
-                //Update position
-                vxapp = ( (vx + xrem + (thrust_x >> tdelay) ) >> 7);
-                vyapp = ( (vy + yrem + (thrust_y >> tdelay) ) >> 7);
-                xrem = vx + xrem + (thrust_x >> tdelay) - vxapp*128;
-                yrem = vy + yrem + (thrust_y >> tdelay) - vyapp*128;
-                xtry = x + vxapp;
-                ytry = y + vyapp;
+            }
 
-                //Use thrust...
-                if (tdelay < tdelay_max && tcount > 100){
-                    tdelay += 1;
-                    tcount = 0;
-                }
-                if (tdelay >= tdelay_max){
-                    thrust_x = 0;
-                    thrust_y = 0;
-                }
-                tcount += 1;
-
-                // Keep spacecraft in bounds
-                if (xtry > 0 && xtry < 320 - 16)
-                    x = xtry;
-                if (ytry > 0 && ytry < 180 - 16)
-                    y = ytry;
-                set(x+8, y+8, 0xff);
+        }
             
-        //     i++; 
-        // }
-    // }
 
     } //end of infinite loop
 }// end of main
