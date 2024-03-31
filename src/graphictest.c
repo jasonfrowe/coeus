@@ -4,29 +4,22 @@
 #include <stdbool.h>
 // #include "usb_hid_keys.h"
 
+#define MAPSIZE 1024 // Size of world
+#define SWIDTH 320 // width of visible screen
+#define SHEIGHT 180 // height of visible screen
 
+//Boundary for scrolling
+#define BX1 = 40
+#define BX2 = SHEIGHT - 40
+#define BY1 = 40
+#define BY2 = SWIDTH - 40
+
+//BKG Stars
+#define NSTARS 64
+
+#define BITMAP_CONFIG 0xFF00
 #define SPRITE_CONFIG 0xFF10
-#define SPACESHIP_DATA 0xE100 // 
-
-static const int16_t sin_fix8[] = {
-    0, 65, 127, 180, 220, 246, 255, 246, 220, 180, 127, 65, 
-    0, -65, -127, -180, -220, -246, -255, -246, -220, -180, 
-    -127, -65, 0
-};
-
-static const int16_t cos_fix8[] = {
-    255, 246, 220, 180, 127, 65, 0, -65, -127, -180, -220, 
-    -246, -255, -246, -220, -180, -127, -65, 0, 65, 127, 180, 
-    220, 246, 255
-};
-
-static const int16_t t2_fix8[] = {
-    0, 36, 80, 127, 173, 217, 254, 283, 301, 308, 301, 283, 
-    254, 217, 173, 127, 80, 36, 0, -29, -47, -54, -47, -29, 0
-};
-
-uint8_t ri = 0; // current rotation location for spaceship
-uint8_t ri_max = 23; // max rotations 
+#define SPACESHIP_DATA 0xE100 //Extended RAM
 
 // access to 6522
 struct __VIA6522 {
@@ -37,35 +30,52 @@ struct __VIA6522 {
 };
 #define VIAp (*(volatile struct __VIA6522 *)0xFFD0)
 
+static const uint16_t vlen = 57600; // Extended Memory space for bitmap graphics
 
-#define JOYSTICK_INPUT 0xFF20 // Gamepad
+// Pre-calulated Angles: 255*sin(theta)
+static const int16_t sin_fix8[] = {
+    0, 65, 127, 180, 220, 246, 255, 246, 220, 180, 127, 65, 
+    0, -65, -127, -180, -220, -246, -255, -246, -220, -180, 
+    -127, -65, 0
+};
 
-#define KEYBOARD_INPUT 0xFF30 // Keyboard
-// 256 bytes HID code max, stored in 32 uint8
-#define KEYBOARD_BYTES 32
-uint8_t keystates[KEYBOARD_BYTES] = {0};
-#define key(code) (keystates[code >> 3] & (1 << (code & 7)))
+// Pre-calulated Angles: 255*cos(theta)
+static const int16_t cos_fix8[] = {
+    255, 246, 220, 180, 127, 65, 0, -65, -127, -180, -220, 
+    -246, -255, -246, -220, -180, -127, -65, 0, 65, 127, 180, 
+    220, 246, 255
+};
 
-uint16_t vlen = 57600;
-uint8_t yellow = 240 - 16*4;
+// Pre-calulated Affine offsets: 181*sin(theta - pi/4) + 127
+static const int16_t t2_fix8[] = {
+    0, 36, 80, 127, 173, 217, 254, 283, 301, 308, 301, 283, 
+    254, 217, 173, 127, 80, 36, 0, -29, -47, -54, -47, -29, 0
+};
 
+static uint8_t ri = 0; // current rotation info for spaceship
+static const uint8_t ri_max = 23; // max rotations 
 
-// Initial position of spacecraft
-int x = 100;
-int y = 100;
-int vx = 0;
-int vy = 0;
+// Spacecraft properties
+#define SHIP_ROT_SPEED 3 // How fast the spaceship can rotate, must be >= 1. 
 
-// Array for bullets
-#define NBULLET 16
-#define NBULLET_TIMER_MAX 5
-uint16_t bullet_x[NBULLET] = {0}; //X-position
-uint16_t bullet_y[NBULLET] = {0}; //Y-position
-int8_t bullet_status[NBULLET] = {0};         //Status of bullets
-uint8_t bullet_c = 0;               //Counter for bullets
-uint8_t bullet_v = 4;              //Bullet Speed
-uint8_t bullet_timer = 0;       // delay for new bullets
+// Initial position and velocity of spacecraft
+static int x = 160;
+static int y = 90;
+static int vx = 0;
+static int vy = 0;
 
+// Properties for bullets
+#define NBULLET 16  // maximum good-guy bullets
+#define NBULLET_TIMER_MAX 5 // Sets interval for new bullets when fire button is held
+static const uint8_t bullet_v = 4; //Bullet Speed
+
+static uint16_t bullet_x[NBULLET] = {0};     //X-position
+static uint16_t bullet_y[NBULLET] = {0};     //Y-position
+static int8_t bullet_status[NBULLET] = {0};  //Status of bullets
+static uint8_t bullet_c = 0;                 //Counter for bullets
+static uint8_t bullet_timer = 0;             //delay timer for new bullets
+
+// Routine for placing a single dot on the screen
 static inline void set(int x, int y, int colour)
 {
     RIA.addr0 =  (x / 1) + (320 / 1 * y);
@@ -74,14 +84,7 @@ static inline void set(int x, int y, int colour)
     RIA.rw0 = bit;
 }
 
-static inline void unset(int x, int y)
-{
-    RIA.addr0 =  (x / 1) + (320 / 1 * y);
-    RIA.step0 = 0;
-    uint8_t bit = 0xFE;
-    RIA.rw0 &= ~bit;
-}
-
+//Functions for generating randoms
 #define swap(a, b) { uint16_t t = a; a = b; b = t; }
 
 uint16_t random(uint16_t low_limit, uint16_t high_limit)
@@ -99,12 +102,12 @@ static void setup()
     // xregn : address 1, 0 ,0 then we are setting '1' bit.  That bit will be set to 2
     xregn(1, 0, 0, 1, 2); // set 320x180 canvas, last number selects Canvas size 
 
-    xram0_struct_set(0xFF00, vga_mode3_config_t, x_pos_px, 0);
-    xram0_struct_set(0xFF00, vga_mode3_config_t, y_pos_px, 0);
-    xram0_struct_set(0xFF00, vga_mode3_config_t, width_px, 320);
-    xram0_struct_set(0xFF00, vga_mode3_config_t, height_px, 180);
-    xram0_struct_set(0xFF00, vga_mode3_config_t, xram_data_ptr, 0);
-    xram0_struct_set(0xFF00, vga_mode3_config_t, xram_palette_ptr, 0xFFFF);
+    xram0_struct_set(BITMAP_CONFIG, vga_mode3_config_t, x_pos_px, 0);
+    xram0_struct_set(BITMAP_CONFIG, vga_mode3_config_t, y_pos_px, 0);
+    xram0_struct_set(BITMAP_CONFIG, vga_mode3_config_t, width_px, 320);
+    xram0_struct_set(BITMAP_CONFIG, vga_mode3_config_t, height_px, 180);
+    xram0_struct_set(BITMAP_CONFIG, vga_mode3_config_t, xram_data_ptr, 0);
+    xram0_struct_set(BITMAP_CONFIG, vga_mode3_config_t, xram_palette_ptr, 0xFFFF);
 
     // xregn : address 1, 0 ,1 then we are setting '3' bits.  Thoses bits will be set to 3, 3, 0xFF00
     xregn(1, 0, 1, 3, 3, 3, 0xFF00); // Mode 3, 4-bit colour.  2nd last is bit depth, last is address config
@@ -124,75 +127,55 @@ static void setup()
 
     xregn(1, 0, 1, 5, 4, 1, SPRITE_CONFIG, 1, 0);
 
-    // Clear out extended memory for video
+    // Clear out extended memory for bit-map video
     
     RIA.addr0 = 0;
     RIA.step0 = 1;
     for (unsigned i = vlen; i--;)
         RIA.rw0 = 0;    
 
-    // set(11, 20);
-    // set(12, 21);
-    // set(10, 22);
-    // set(11, 22);
-    // set(12, 22);
-
-    // unset(12, 22);
-
-
-    //Turn on controller
-    // xregn(0, 0, 2, 1, JOYSTICK_INPUT);
-    // xregn(0, 0, 0, 1, KEYBOARD_INPUT);
-
 }
 
 int main(void)
 {
-    setup();
+
+    setup(); //Set up Graphics
 
     // Makes rotation of ship slower
     uint16_t iframe = 0;
-    uint16_t iframe_old = 3;
+    uint16_t iframe_old = SHIP_ROT_SPEED;
 
-    uint8_t v; //Testing for V-sync
+    uint8_t v; //Used to test for V-sync
 
-    uint8_t r1 = 0;
-    uint8_t k = 0;
-    uint8_t c1 = 0;
-
-    int xtry = x;
+    int xtry = x; //For displaying Space ship
     int ytry = y;
 
-    int xrem = 0;
+    int xrem = 0; //Tracking remainder for smooth motion of space ship
     int yrem = 0;
 
-    int vxapp = 0;
+    int vxapp = 0; //Applied motion to the space ship position
     int vyapp = 0;
 
-    int val;
+    int val; //used for updating sprites
 
-    uint8_t tdelay = 0;
-    uint8_t tdelay_max = 8;
+    uint8_t tdelay = 0;     // Counter for thrust/momentum/friction 
+    uint8_t tdelay_max = 8; // momentum
     uint8_t tcount = 0;
 
-    int thrust_x = 0;
+    int thrust_x = 0;       // Initialize amount of thrust applied (acts like momentum)
     int thrust_y = 0;
 
-    VIAp.ddra = 0; //GPIO as input (probably only need to do once...)
+    VIAp.ddra = 0; //set GPIO as input (probably only need to do once...)
 
-    while (k == 0) { //Infinite Game Loop
+    while (1) { //Infinite Game Loop
 
-        uint16_t i = 0;
-        uint16_t j = 0;
-        uint16_t ii = 0;
-
-        if (RIA.vsync == v)
+        if (RIA.vsync == v) //Run updates on V-sync.  Ideally this is 1/60 s 
             continue;
-        v = RIA.vsync;
+        v = RIA.vsync; 
 
         // Arcade Stick via GPIO
 
-        vx=0; 
+        vx=0; // Velocity to apply to Spacecraft.
         vy=0;
 
         // Copy positions during vblank
@@ -221,15 +204,14 @@ int main(void)
         xram0_struct_set(SPRITE_CONFIG, vga_mode4_asprite_t, transform[5],  
             16*t2_fix8[ri_max - ri + 1]);
 
-
+        // We only periodically sample left/right to make rotation easier to control
         if (iframe >= iframe_old){
             iframe = 0;
 
             if (VIAp.pa > 0){
 
                 //Rotate counter
-                if ((VIAp.pa & 0x04) >> 2){
-                    // vx-=1;
+                if ((VIAp.pa & 0x04) >> 2){ //Rotate left
                     // update rotation
                     if (ri == ri_max){
                         ri = 0;
@@ -238,8 +220,7 @@ int main(void)
                     } 
                 }
 
-                if ((VIAp.pa & 0x08) >> 3){
-                    // vx+=1;
+                if ((VIAp.pa & 0x08) >> 3){ //Rotate right
                     // update rotation
                     if (ri == 0){
                         ri = ri_max;
@@ -252,20 +233,19 @@ int main(void)
         }
         iframe+=1;
 
-        if (VIAp.pa > 0){
-            // Up direction
+        if (VIAp.pa > 0){ //test if joystick has input
+            // Up direction -- applies thrust..
             if (VIAp.pa & 0x01){
-                vy = -cos_fix8[ri];
                 vx = -sin_fix8[ri];
+                vy = -cos_fix8[ri];
                 tdelay = 0;
             }
             // Down direction
             if ((VIAp.pa & 0x02) >> 1){
-                // vy += cos_fix8[ri];
-                // vx += sin_fix8[ri];
+                // Will apply Shield with Down
             }
 
-            // Fire button
+            // Left fire button -- Bullets 
             if ((VIAp.pa & 0x50) == 0x50 && bullet_timer > NBULLET_TIMER_MAX){
                 bullet_timer = 0;
                 if (bullet_status[bullet_c] < 0){
@@ -278,17 +258,24 @@ int main(void)
                     }
                 }
             }
+
+            // Right fire button -- EMP
+            if ((VIAp.pa & 0x50) == 0x30){
+                // Will apply BIG BOMB here.
+            }
+
         }
         bullet_timer += 1;
         
         //Update position
-        vxapp = ( (vx + xrem + thrust_x ) >> 9);
-        vyapp = ( (vy + yrem + thrust_y ) >> 9);
-        xrem = vx + xrem + thrust_x - vxapp * 512;
+        vxapp = ( (vx + xrem + thrust_x ) >> 9); //Apply velocity, remainder and momentum 
+        vyapp = ( (vy + yrem + thrust_y ) >> 9); // 9 and 512 must balance (e.g., 2^9 = 512)
+        xrem = vx + xrem + thrust_x - vxapp * 512; //Update remainder
         yrem = vy + yrem + thrust_y - vyapp * 512;
-        xtry = x + vxapp;
+        xtry = x + vxapp; //Update ship position
         ytry = y + vyapp;
 
+        //Update thrust if joystick is held.
         if (abs(thrust_x) < 1024){
             thrust_x += vx >> 4;
         }
@@ -296,7 +283,7 @@ int main(void)
             thrust_y += vy >> 4;
         }
 
-        //Update momentum...
+        //Update momentum by applying friction 
         if (tdelay < tdelay_max && tcount > 50){
             tdelay += 1;
             tcount = 0;
@@ -314,10 +301,9 @@ int main(void)
             x = xtry;
         if (ytry > 0 && ytry < 180 - 16)
             y = ytry;
-        // set(x+8, y+8, 0xff);
 
         //Update bullets
-        for (ii = 0; ii < NBULLET; ii++) {
+        for (uint8_t ii = 0; ii < NBULLET; ii++) {
             if (bullet_status[ii] >= 0){
                 set(bullet_x[ii], bullet_y[ii], 0x00);
                 bullet_x[ii] -= sin_fix8[bullet_status[ii]] >> 6;
