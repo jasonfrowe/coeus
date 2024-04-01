@@ -12,6 +12,8 @@
 #define MAPSIZEM1 1023 
 #define SWIDTH 320 // width of visible screen
 #define SHEIGHT 180 // height of visible screen
+static int16_t dx = 0;
+static int16_t dy = 0;
 
 //Sprite locations
 #define SPACESHIP_DATA  0xE100  //Spaceship Sprite
@@ -44,6 +46,14 @@ static int16_t battle_y[NBATTLE_MAX] = {0};
 static uint8_t nfighter = NFIGHTER_MAX; //
 static int16_t fighter_x[NFIGHTER_MAX] = {0}; 
 static int16_t fighter_y[NFIGHTER_MAX] = {0}; 
+static int16_t fighter_dx[NFIGHTER_MAX] = {0}; 
+static int16_t fighter_dy[NFIGHTER_MAX] = {0}; 
+static int16_t fighter_vx[NFIGHTER_MAX] = {0}; 
+static int16_t fighter_vy[NFIGHTER_MAX] = {0}; 
+static int16_t fighter_vxi[NFIGHTER_MAX] = {0}; 
+static int16_t fighter_vyi[NFIGHTER_MAX] = {0}; 
+static int16_t fighter_xrem[NFIGHTER_MAX] = {0}; 
+static int16_t fighter_yrem[NFIGHTER_MAX] = {0}; 
 
 static uint8_t nsprites = 0;
 
@@ -54,6 +64,9 @@ static int16_t BX1 = BBX;
 static int16_t BX2 = SWIDTH - BBX;
 static int16_t BY1 = BBY;
 static int16_t BY2 = SHEIGHT - BBY;
+
+//Frame counter
+uint16_t update_sch = 0; 
 
 //Screen position at start (world coordinates)
 //This position labels 0,0 on the screen 
@@ -107,7 +120,7 @@ static const int16_t cos_fix[] = {
 static const int16_t t2_fix4[] = {
     0, 288, 640, 1016, 1384, 1736, 2032, 2264, 2408, 2464, 
     2408, 2264, 2032, 1736, 1384, 1016, 640, 288, 0, -232, 
-    -376, -432, -376, -232
+    -376, -432, -376, -232, 0
 };
 
 static uint8_t ri = 0;            // current rotation info for spaceship
@@ -121,10 +134,10 @@ static int16_t earth_x = SWIDTH/2 - 16;
 static int16_t earth_y = SHEIGHT/2 - 16;
 
 // Initial position and velocity of spacecraft
-static int x = 160;  //Screen-coordinates. 
-static int y = 90;
-static int vx = 0;
-static int vy = 0;
+static int16_t x = 160;  //Screen-coordinates. 
+static int16_t y = 90;
+static int16_t vx = 0;
+static int16_t vy = 0;
 
 // Properties for bullets
 #define NBULLET 8  // maximum good-guy bullets
@@ -237,6 +250,8 @@ static void enemy_setup()
 
         fighter_x[i] = random(1, MAPSIZEM1);
         fighter_y[i] = random(1, MAPSIZEM1);
+        fighter_vxi[i] = random(16, 512);
+        fighter_vyi[i] = random(16, 512);
         if (fighter_x[i] > MAPSIZED2){
             fighter_x[i] -= MAPSIZE;
         }
@@ -341,7 +356,7 @@ static void station_update(int16_t dx, int16_t dy)
     }
 }
 
-static void fighter_update(int16_t dx, int16_t dy)
+static void fighter_update()
 {
 
     RIA.step0 = sizeof(vga_mode4_sprite_t);
@@ -352,7 +367,7 @@ static void fighter_update(int16_t dx, int16_t dy)
 
     for (uint8_t i = 0; i < nfighter; i++) {
 
-        fighter_x[i] -= dx;
+        fighter_x[i] -= dx - fighter_dx[i];
         if (fighter_x[i] <= MMAPSIZED2){
             fighter_x[i] += MAPSIZE;
         }
@@ -370,7 +385,7 @@ static void fighter_update(int16_t dx, int16_t dy)
 
     for (uint8_t i = 0; i < nfighter; i++) {
 
-        fighter_y[i] -= dy;
+        fighter_y[i] -= dy - fighter_dy[i];
         if (fighter_y[i] <= MMAPSIZED2){
             fighter_y[i] += MAPSIZE;
         }
@@ -382,6 +397,61 @@ static void fighter_update(int16_t dx, int16_t dy)
         RIA.rw1 = (fighter_y[i] >> 8) & 0xff;
 
     }
+
+}
+
+void fighter_attack()
+{
+    
+    int16_t fdx;
+    int16_t fdy;
+    int16_t fvxapp;
+    int16_t fvyapp;
+
+    for (uint8_t i = 0; i < nfighter; i++) {
+        fdx = x - fighter_x[i];
+        fdy = y - fighter_y[i];
+
+        if (abs(fdx) < 30 && abs(fdy) < 30) {
+            fighter_dx[i] =  0;
+            fighter_dy[i] =  0;
+            fighter_xrem[i] = 0;
+            fighter_yrem[i] = 0;
+        } else {
+            if (update_sch%30 == 0){ 
+                if ((rand() >> 15) +1){
+                    if (fdx > 0){
+                        fighter_vx[i] = fighter_vxi[i]; //-fighter_vx[i];
+                    } else {
+                        fighter_vx[i] = -fighter_vxi[i];
+                    }
+                }
+
+                if ((rand() >> 15) +1){
+                    if (fdy > 0){
+                        fighter_vy[i] = fighter_vyi[i]; // -fighter_vy[i];
+                    } else {
+                        fighter_vy[i] = -fighter_vyi[i];
+                    }
+                }
+                
+            }
+
+
+            fvxapp = (fighter_vx[i] + fighter_xrem[i]) >> 8;
+            fvyapp = (fighter_vy[i] + fighter_yrem[i]) >> 8;
+            fighter_xrem[i] = fighter_vx[i] + fighter_xrem[i] - fvxapp * 256;
+            fighter_yrem[i] = fighter_vy[i] + fighter_yrem[i] - fvyapp * 256;
+            fighter_dx[i] = fvxapp;
+            fighter_dy[i] = fvyapp;
+
+            // printf("dx %d %d \n",i, fighter_vx[i]);
+
+        }
+
+    }
+
+    fighter_update();
 
 }
 
@@ -550,11 +620,11 @@ int main(void)
     earth_setup(); // Set up Earth.
     enemy_setup(); // Set up Enemies
 
-    uint16_t update_sch = 0; //Spread out SPRITE updates
+    // Motion of the screen
+    dx = 0;
+    dy = 0;
 
     //Plot stars
-    int16_t dx = 0;
-    int16_t dy = 0;
     plot_stars(dx, dy);
 
     // Makes rotation of ship slower
@@ -592,12 +662,13 @@ int main(void)
             continue;
         v = RIA.vsync; 
 
-        // Arcade Stick via GPIO
-
         vx=0; // Velocity to apply to Spacecraft.
         vy=0;
 
         ship_update();
+
+
+        // Arcade Stick via GPIO ///
 
         // We only periodically sample left/right to make rotation easier to control
         if (iframe >= iframe_old){
@@ -731,7 +802,10 @@ int main(void)
             // }
         }
 
-        //Update stars and stationary sprites
+        //Update fighters..
+        fighter_attack();
+
+        //Update stars and stationary sprites for screen scroll 
         if (dx != 0 || dy != 0){
 
             plot_stars(dx, dy);
@@ -742,13 +816,14 @@ int main(void)
 
             battle_update(dx, dy);
 
-            fighter_update(dx, dy);
+            // fighter_update(dx, dy);
 
             dx = 0;
             dy = 0;
-
             
         }
+
+        
 
         //Update bullets
         for (uint8_t ii = 0; ii < NBULLET; ii++) {
