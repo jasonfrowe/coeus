@@ -38,12 +38,14 @@ unsigned FIGHTER_CONFIG;  //Enemy fighter sprite config
 static uint8_t nstation = NSTATION_MAX; //
 static int16_t station_x[NSTATION_MAX] = {0}; 
 static int16_t station_y[NSTATION_MAX] = {0}; 
+static int8_t  station_status[NSTATION_MAX] = {0}; 
 
 static uint8_t nbattle = NBATTLE_MAX; //
 static int16_t battle_x[NBATTLE_MAX] = {0}; 
 static int16_t battle_y[NBATTLE_MAX] = {0}; 
 
 static uint8_t nfighter = NFIGHTER_MAX; //
+static uint8_t fighter_status[NFIGHTER_MAX] = {0}; //Status 
 static int16_t fighter_x[NFIGHTER_MAX] = {0}; 
 static int16_t fighter_y[NFIGHTER_MAX] = {0}; 
 static int16_t fighter_dx[NFIGHTER_MAX] = {0}; 
@@ -203,6 +205,7 @@ static void enemy_setup()
 
         station_x[i] = random(1, MAPSIZEM1);
         station_y[i] = random(1, MAPSIZEM1);
+        station_status[i] = 1;
         if (station_x[i] > MAPSIZED2){
             station_x[i] -= MAPSIZE;
         }
@@ -250,8 +253,9 @@ static void enemy_setup()
 
         fighter_x[i] = random(1, MAPSIZEM1);
         fighter_y[i] = random(1, MAPSIZEM1);
-        fighter_vxi[i] = random(16, 512);
-        fighter_vyi[i] = random(16, 512);
+        fighter_vxi[i] = random(16, 256);
+        fighter_vyi[i] = random(16, 256);
+        fighter_status[i] = 1;
         if (fighter_x[i] > MAPSIZED2){
             fighter_x[i] -= MAPSIZE;
         }
@@ -367,7 +371,10 @@ static void fighter_update()
 
     for (uint8_t i = 0; i < nfighter; i++) {
 
-        fighter_x[i] -= dx - fighter_dx[i];
+        if (fighter_status[i]){
+            fighter_x[i] += -dx + fighter_dx[i];
+        }
+
         if (fighter_x[i] <= MMAPSIZED2){
             fighter_x[i] += MAPSIZE;
         }
@@ -377,7 +384,6 @@ static void fighter_update()
 
         RIA.rw0 = fighter_x[i] & 0xff;
         RIA.rw1 = (fighter_x[i] >> 8) & 0xff;
-        
     }
 
     RIA.addr0 = FIGHTER_CONFIG + 2;
@@ -385,7 +391,10 @@ static void fighter_update()
 
     for (uint8_t i = 0; i < nfighter; i++) {
 
-        fighter_y[i] -= dy - fighter_dy[i];
+        if (fighter_status[i]){
+            fighter_y[i] += -dy + fighter_dy[i];
+        }
+
         if (fighter_y[i] <= MMAPSIZED2){
             fighter_y[i] += MAPSIZE;
         }
@@ -400,59 +409,105 @@ static void fighter_update()
 
 }
 
-void fighter_attack()
+uint8_t fighter_attack()
 {
     
-    int16_t fdx;
+    int16_t fdx; //Position of fight relative to space ship
     int16_t fdy;
-    int16_t fvxapp;
+    int16_t fvxapp; //Applied velocity to space ship.
     int16_t fvyapp;
+    uint8_t attack = 0;
 
     for (uint8_t i = 0; i < nfighter; i++) {
-        fdx = x - fighter_x[i];
-        fdy = y - fighter_y[i];
 
-        if (abs(fdx) < 30 && abs(fdy) < 30) {
-            fighter_dx[i] =  0;
-            fighter_dy[i] =  0;
-            fighter_xrem[i] = 0;
-            fighter_yrem[i] = 0;
-        } else {
-            if (update_sch%30 == 0){ 
-                if ((rand() >> 15) +1){
-                    if (fdx > 0){
-                        fighter_vx[i] = fighter_vxi[i]; //-fighter_vx[i];
-                    } else {
-                        fighter_vx[i] = -fighter_vxi[i];
+        if (fighter_status[i]){
+
+            fdx = x - fighter_x[i];
+            fdy = y - fighter_y[i];
+
+            if (abs(fdx) < 30 && abs(fdy) < 30) {
+                fighter_dx[i] =  0;
+                fighter_dy[i] =  0;
+                fighter_xrem[i] = 0;
+                fighter_yrem[i] = 0;
+
+                attack = +1;
+
+            } else {
+                if (update_sch%30 == 0){ 
+                    if ((rand() >> 15) +1){
+                        if (fdx > 0){
+                            fighter_vx[i] = fighter_vxi[i]; 
+                        } else {
+                            fighter_vx[i] = -fighter_vxi[i];
+                        }
                     }
+
+                    if ((rand() >> 15) +1){
+                        if (fdy > 0){
+                            fighter_vy[i] = fighter_vyi[i]; 
+                        } else {
+                            fighter_vy[i] = -fighter_vyi[i];
+                        }
+                    }
+                    
                 }
 
-                if ((rand() >> 15) +1){
-                    if (fdy > 0){
-                        fighter_vy[i] = fighter_vyi[i]; // -fighter_vy[i];
-                    } else {
-                        fighter_vy[i] = -fighter_vyi[i];
-                    }
-                }
-                
+
+                fvxapp = (fighter_vx[i] + fighter_xrem[i]) >> 8;
+                fvyapp = (fighter_vy[i] + fighter_yrem[i]) >> 8;
+                fighter_xrem[i] = fighter_vx[i] + fighter_xrem[i] - fvxapp * 256;
+                fighter_yrem[i] = fighter_vy[i] + fighter_yrem[i] - fvyapp * 256;
+                fighter_dx[i] = fvxapp;
+                fighter_dy[i] = fvyapp;
+
+                // printf("dx %d %d \n",i, fighter_vx[i]);
+
             }
-
-
-            fvxapp = (fighter_vx[i] + fighter_xrem[i]) >> 8;
-            fvyapp = (fighter_vy[i] + fighter_yrem[i]) >> 8;
-            fighter_xrem[i] = fighter_vx[i] + fighter_xrem[i] - fvxapp * 256;
-            fighter_yrem[i] = fighter_vy[i] + fighter_yrem[i] - fvyapp * 256;
-            fighter_dx[i] = fvxapp;
-            fighter_dy[i] = fvyapp;
-
-            // printf("dx %d %d \n",i, fighter_vx[i]);
-
         }
 
     }
 
     fighter_update();
 
+    if (attack > 4){
+        attack = 4;
+    }
+
+    return attack;
+
+}
+
+static void bullet_fighter(uint8_t b_id)
+{
+    for (uint8_t i = 0; i < nfighter; i++) {
+        if (fighter_x[i] < bullet_x[b_id] + 2 &&
+            fighter_x[i] + 6 > bullet_x[b_id] &&
+            fighter_y[i] < bullet_y[b_id] + 2 &&
+            fighter_y[i] + 6 > bullet_y[b_id])
+        {
+                bullet_status[b_id] = -1;
+                fighter_status[i] = 0;
+                fighter_x[i] = -10; //Move sprite off-screen
+                fighter_y[i] = -10;
+        }
+    } 
+}
+
+static void create_new_fighter()
+{
+    for (uint8_t i = 0; i < nfighter; i++) {
+        if (fighter_status[i] == 0){
+            for (uint8_t j = 0; j < nstation; j++) {
+                if(station_status[j]){
+                    fighter_status[i] = 1;
+                    fighter_x[i] = station_x[j];
+                    fighter_y[i] = station_y[j];
+                }
+            }
+            break;
+        }
+    }
 }
 
 static void earth_update(int16_t dx, int16_t dy)
@@ -642,6 +697,8 @@ int main(void)
     int vxapp = 0; //Applied motion to the space ship position
     int vyapp = 0;
 
+    uint8_t attack = 0; //enemy stopping beam
+
     int val; //used for updating sprites
 
     uint8_t tdelay = 0;     // Counter for thrust/momentum/friction 
@@ -667,6 +724,9 @@ int main(void)
 
         ship_update();
 
+        if (update_sch%256 == 0){
+            create_new_fighter();
+        }
 
         // Arcade Stick via GPIO ///
 
@@ -737,6 +797,15 @@ int main(void)
 
         }
         bullet_timer += 1;
+
+        //Update fighters and track attacks
+        attack = fighter_attack();
+        if (attack > 0){
+            vx = vx >> attack;
+            vy = vy >> attack;
+            thrust_x = thrust_x >> attack;
+            thrust_y = thrust_y >> attack;
+        }
         
         //Update position
         vxapp = ( (vx + xrem + thrust_x ) >> 9); //Apply velocity, remainder and momentum 
@@ -760,8 +829,6 @@ int main(void)
         if (tdelay < tdelay_max && tcount > 50){
             tdelay += 1;
             tcount = 0;
-            // thrust_x = thrust_x >> 1;
-            // thrust_y = thrust_y >> 1;
             if (vx == 0){
                 thrust_x = thrust_x >> 1;
             }
@@ -778,32 +845,17 @@ int main(void)
         // Keep spacecraft in bounds
         if (xtry > BX1 && xtry < BX2){
             x = xtry;
+            dx = 0;
         } else {
-            dx += (xtry - x);
-            // sx += dx;
-            // if (sx > MAPSIZE){
-            //     sx -= MAPSIZE;
-            // }
-            // if (sx <= 0){
-            //     sx += MAPSIZE;
-            // }
+            dx = (xtry - x);
         }
             
         if (ytry > BY1 && ytry < BY2){
             y = ytry;
+            dy = 0;
         } else {
-            dy += (ytry - y);
-            // sy += dy;
-            // if (sy > MAPSIZE){
-            //     sy -= MAPSIZE;
-            // }
-            // if (sy <= 0){
-            //     sy += MAPSIZE;
-            // }
+            dy = (ytry - y);
         }
-
-        //Update fighters..
-        fighter_attack();
 
         //Update stars and stationary sprites for screen scroll 
         if (dx != 0 || dy != 0){
@@ -816,11 +868,9 @@ int main(void)
 
             battle_update(dx, dy);
 
-            // fighter_update(dx, dy);
-
-            dx = 0;
-            dy = 0;
-            
+            // dx = 0;
+            // dy = 0;
+    
         }
 
         
@@ -829,12 +879,16 @@ int main(void)
         for (uint8_t ii = 0; ii < NBULLET; ii++) {
             if (bullet_status[ii] >= 0){
                 set(bullet_x[ii], bullet_y[ii], 0x00);
+                //Check for collision
+                bullet_fighter(ii);
+            }
 
+            if (bullet_status[ii] >= 0){
                 bvx = -sin_fix[bullet_status[ii]];
                 bvy = -cos_fix[bullet_status[ii]];
                 bvxapp = ( (bvx + bvxrem[ii]) >> 6);
                 bvyapp = ( (bvy + bvyrem[ii]) >> 6);
-                bvxrem[ii] = bvx + bvxrem[ii] - bvxapp * 64; //Expensive...
+                bvxrem[ii] = bvx + bvxrem[ii] - bvxapp * 64; 
                 bvyrem[ii] = bvy + bvyrem[ii] - bvyapp * 64;
                 bullet_x[ii] += bvxapp;
                 bullet_y[ii] += bvyapp;
