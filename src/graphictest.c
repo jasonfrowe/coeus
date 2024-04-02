@@ -41,8 +41,13 @@ static int16_t station_y[NSTATION_MAX] = {0};
 static int8_t  station_status[NSTATION_MAX] = {0}; 
 
 static uint8_t nbattle = NBATTLE_MAX; //
+static uint8_t battle_status[NBATTLE_MAX] = {0}; 
 static int16_t battle_x[NBATTLE_MAX] = {0}; 
 static int16_t battle_y[NBATTLE_MAX] = {0}; 
+static int16_t battle_dx[NBATTLE_MAX] = {0}; 
+static int16_t battle_dy[NBATTLE_MAX] = {0};
+static int16_t battle_xrem[NBATTLE_MAX] = {0}; 
+static int16_t battle_yrem[NBATTLE_MAX] = {0};
 
 static uint8_t nfighter = NFIGHTER_MAX; //
 static uint8_t fighter_status[NFIGHTER_MAX] = {0}; //Status 
@@ -228,6 +233,7 @@ static void enemy_setup()
 
         unsigned ptr = BATTLE_CONFIG + i * sizeof(vga_mode4_sprite_t);
 
+        battle_status[i] = 1;
         battle_x[i] = random(1, MAPSIZEM1);
         battle_y[i] = random(1, MAPSIZEM1);
         if (battle_x[i] > MAPSIZED2){
@@ -274,7 +280,7 @@ static void enemy_setup()
     xregn(1, 0, 1, 5, 4, 0, STATION_CONFIG, nsprites, 1);
 }
 
-static void battle_update(int16_t dx, int16_t dy)
+static void battle_update()
 {
 
     RIA.step0 = sizeof(vga_mode4_sprite_t);
@@ -285,7 +291,7 @@ static void battle_update(int16_t dx, int16_t dy)
 
     for (uint8_t i = 0; i < nbattle; i++) {
 
-        battle_x[i] -= dx;
+        battle_x[i] += -dx + battle_dx[i];
         if (battle_x[i] <= MMAPSIZED2){
             battle_x[i] += MAPSIZE;
         }
@@ -303,7 +309,7 @@ static void battle_update(int16_t dx, int16_t dy)
 
     for (uint8_t i = 0; i < nbattle; i++) {
 
-        battle_y[i] -= dy;
+        battle_y[i] += -dy + battle_dy[i];
         if (battle_y[i] <= MMAPSIZED2){
             battle_y[i] += MAPSIZE;
         }
@@ -409,10 +415,66 @@ static void fighter_update()
 
 }
 
+uint8_t battle_attack()
+{
+    uint8_t attack = 0;
+
+    int16_t fdx; //Position of fighter relative to Earth
+    int16_t fdy;
+    int8_t vx; //battle station velocity
+    int8_t vy;
+    int16_t bvxapp;
+    int16_t bvyapp;
+
+    for (uint8_t i = 0; i < nbattle; i++) {
+
+        fdx = earth_x - battle_x[i];
+        fdy = earth_y - battle_y[i];
+
+        if (abs(fdx) < 50 && abs(fdy) < 50) {
+                battle_dx[i] =  0;
+                battle_dy[i] =  0;
+                battle_xrem[i] = 0;
+                battle_yrem[i] = 0;
+                vx = 0;
+                vy = 0;
+
+                attack = +1;
+
+            } else {
+
+                if (fdx > 0){
+                    vx = 32; 
+                } else {
+                    vx = -32;
+                }
+
+                if (fdy > 0){
+                    vy = 32; 
+                } else {
+                    vy = -32;
+                }
+
+            }
+
+        bvxapp = (vx + battle_xrem[i]) >> 8;
+        bvyapp = (vy + battle_yrem[i]) >> 8;
+        battle_xrem[i] = vx + battle_xrem[i] - bvxapp * 256;
+        battle_yrem[i] = vy + battle_yrem[i] - bvyapp * 256;
+        battle_dx[i] = bvxapp;
+        battle_dy[i] = bvyapp;
+
+    }
+
+    battle_update();
+
+    return attack;
+}
+
 uint8_t fighter_attack()
 {
     
-    int16_t fdx; //Position of fight relative to space ship
+    int16_t fdx; //Position of fighter relative to space ship
     int16_t fdy;
     int16_t fvxapp; //Applied velocity to space ship.
     int16_t fvyapp;
@@ -453,15 +515,12 @@ uint8_t fighter_attack()
                     
                 }
 
-
                 fvxapp = (fighter_vx[i] + fighter_xrem[i]) >> 8;
                 fvyapp = (fighter_vy[i] + fighter_yrem[i]) >> 8;
                 fighter_xrem[i] = fighter_vx[i] + fighter_xrem[i] - fvxapp * 256;
                 fighter_yrem[i] = fighter_vy[i] + fighter_yrem[i] - fvyapp * 256;
                 fighter_dx[i] = fvxapp;
                 fighter_dy[i] = fvyapp;
-
-                // printf("dx %d %d \n",i, fighter_vx[i]);
 
             }
         }
@@ -806,6 +865,9 @@ int main(void)
             thrust_x = thrust_x >> attack;
             thrust_y = thrust_y >> attack;
         }
+
+        //Update Battle stations
+        attack = battle_attack();
         
         //Update position
         vxapp = ( (vx + xrem + thrust_x ) >> 9); //Apply velocity, remainder and momentum 
@@ -866,7 +928,7 @@ int main(void)
 
             station_update(dx, dy);
 
-            battle_update(dx, dy);
+            // battle_update(dx, dy);
 
             // dx = 0;
             // dy = 0;
