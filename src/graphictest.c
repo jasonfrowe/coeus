@@ -5,31 +5,31 @@
 // #include "usb_hid_keys.h"
 
 //World and screen sizes
-#define MAPSIZE 2048 // Size of world (world coordinates)
+#define MAPSIZE 2048     // Size of world (world coordinates)
 #define MMAPSIZE -2048
 #define MAPSIZED2 1024 
 #define MMAPSIZED2 -1024 
 #define MAPSIZEM1 1023 
-#define SWIDTH 320 // width of visible screen
-#define SHEIGHT 180 // height of visible screen
-static int16_t dx = 0;
+#define SWIDTH 320       // width of visible screen
+#define SHEIGHT 180      // height of visible screen
+static int16_t dx = 0;   // scrolling of visible screen relative to World map
 static int16_t dy = 0;
 
 //Sprite locations
-#define SPACESHIP_DATA  0xE100  //Spaceship Sprite
-#define EARTH_DATA      0xE180  //Earth Sprite
-#define STATION_DATA    0xE980  //Enemy Station Sprite
-#define BATTLE_DATA     0xEB80  //Enemy battle station Sprite
-#define FIGHTER_DATA    0xEC00  //Enemy fighter Sprite
+#define SPACESHIP_DATA  0xE100  //Spaceship Sprite (8x8)
+#define EARTH_DATA      0xE180  //Earth Sprite (32x32)
+#define STATION_DATA    0xE980  //Enemy Station Sprite (16x16)
+#define BATTLE_DATA     0xEB80  //Enemy battle station Sprite (8x8)
+#define FIGHTER_DATA    0xEC00  //Enemy fighter Sprite (4x4)
 
 //XRAM Memory addresses
 #define VGA_CONFIG_START 0xEC20 //Start of graphic config addresses
-unsigned BITMAP_CONFIG;   //Bitmap Config 
-unsigned SPACECRAFT_CONFIG;   //Spacecraft Sprite Config - Affine 
-unsigned EARTH_CONFIG;    //Earth Sprite Config - Standard 
-unsigned STATION_CONFIG;  //Enemy station sprite config
-unsigned BATTLE_CONFIG;   //Enemy battle station sprite config 
-unsigned FIGHTER_CONFIG;  //Enemy fighter sprite config
+unsigned BITMAP_CONFIG;         //Bitmap Config 
+unsigned SPACECRAFT_CONFIG;     //Spacecraft Sprite Config - Affine 
+unsigned EARTH_CONFIG;          //Earth Sprite Config - Standard 
+unsigned STATION_CONFIG;        //Enemy station sprite config
+unsigned BATTLE_CONFIG;         //Enemy battle station sprite config 
+unsigned FIGHTER_CONFIG;        //Enemy fighter sprite config
 
 #define NSTATION_MAX 5  //Number of enemy battle stations
 #define NBATTLE_MAX  5  //Number of portable battle stations 
@@ -49,6 +49,7 @@ static int16_t battle_dy[NBATTLE_MAX] = {0};
 static int16_t battle_xrem[NBATTLE_MAX] = {0}; 
 static int16_t battle_yrem[NBATTLE_MAX] = {0};
 
+#define FIGHTER_RATE 128 //Rate at which Fighters regenerate.
 static uint8_t nfighter = NFIGHTER_MAX; //
 static uint8_t fighter_status[NFIGHTER_MAX] = {0}; //Status 
 static int16_t fighter_x[NFIGHTER_MAX] = {0}; 
@@ -75,16 +76,9 @@ static int16_t BY2 = SHEIGHT - BBY;
 //Frame counter
 uint16_t update_sch = 0; 
 
-//Screen position at start (world coordinates)
-//This position labels 0,0 on the screen 
-// static uint16_t sx = MAPSIZE / 2;
-// static uint16_t sy = MAPSIZE / 2;
-// static uint16_t sx_old = MAPSIZE / 2;
-// static uint16_t sy_old = MAPSIZE / 2;
-
 //Background stars
 #define NSTAR 32
-#define STARFIELD_X 512 //Size of starfield
+#define STARFIELD_X 512 //Size of starfield (how often star pattern repeats)
 #define STARFIELD_Y 256
 static int16_t star_x[NSTAR] = {0};      //X-position -- World coordinates
 static int16_t star_y[NSTAR] = {0};      //Y-position -- World coordinates
@@ -101,7 +95,7 @@ struct __VIA6522 {
 };
 #define VIAp (*(volatile struct __VIA6522 *)0xFFD0)
 
-static const uint16_t vlen = 57600; // Extended Memory space for bitmap graphics
+static const uint16_t vlen = 57600; // Extended Memory space for bitmap graphics (320x180 @ 8-bits)
 
 // Pre-calulated Angles: 255*sin(theta)
 static const int16_t sin_fix[] = {
@@ -112,8 +106,8 @@ static const int16_t sin_fix[] = {
 
 // Pre-calulated Angles: 255*cos(theta)
 static const int16_t cos_fix[] = {
-    255, 246, 220, 180, 127, 65, 0, -65, -127, -180, -220, 
-    -246, -255, -246, -220, -180, -127, -65, 0, 65, 127, 180, 
+    255, 246, 220, 180, 127, 65, 0, -65, -127, -180, -220, -246, 
+    -255, -246, -220, -180, -127, -65, 0, 65, 127, 180, 
     220, 246, 255
 };
 
@@ -121,7 +115,7 @@ static const int16_t cos_fix[] = {
 // static const int16_t t2_fix8[] = {
 //     0, 576, 1280, 2032, 2768, 3472, 4064, 4528, 4816, 4928, 
 //     4816, 4528, 4064, 3472, 2768, 2032, 1280, 576, 0, -464, 
-//     -752, -864, -752, -464
+//     -752, -864, -752, -464, 0
 // };
 
 static const int16_t t2_fix4[] = {
@@ -130,43 +124,84 @@ static const int16_t t2_fix4[] = {
     -376, -432, -376, -232, 0
 };
 
+// Should be able to compact this array 
+static const uint8_t dxdy_table[] = {
+0, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+1, 3, 3, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+0, 2, 3, 3, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+0, 1, 2, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+0, 1, 1, 2, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+0, 1, 1, 2, 2, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+0, 0, 1, 1, 2, 2, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+0, 0, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+0, 0, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5,
+0, 0, 0, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5,
+0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4,
+0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4,
+0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4,
+0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4
+};
+
 static uint8_t ri = 0;            // current rotation info for spaceship
 static const uint8_t ri_max = 23; // max rotations 
 
 // Spacecraft properties
 #define SHIP_ROT_SPEED 3 // How fast the spaceship can rotate, must be >= 1. 
 
-// Earth properties
+// Earth initial position
 static int16_t earth_x = SWIDTH/2 - 16;
 static int16_t earth_y = SHEIGHT/2 - 16;
+int16_t earth_xc = SWIDTH/2;
+static int16_t earth_yc = SHEIGHT/2;
 
 // Initial position and velocity of spacecraft
-static int16_t x = 160;  //Screen-coordinates. 
+static int16_t x = 160;  //Screen-coordinates of spacecraft
 static int16_t y = 90;
-static int16_t vx = 0;
+static int16_t vx = 0;   //Requested velocity of spacecraft.
 static int16_t vy = 0;
+static int16_t vxapp = 0;   //Applied velocity of spacecraft.
+static int16_t vyapp = 0;
 
 // Properties for bullets
 #define NBULLET 8  // maximum good-guy bullets
 #define NBULLET_TIMER_MAX 8 // Sets interval for new bullets when fire button is held
 static const uint8_t bullet_v = 4; //Bullet Speed (not implemented -- fixed at the moment)
-static int16_t bvx = 0;
+static int16_t bvx = 0;                      //Requested velocity
 static int16_t bvy = 0;
-static int16_t bvxapp = 0;
+static int16_t bvxapp = 0;                   //Applied velocity (round-off)
 static int16_t bvyapp = 0;
-static int16_t bvxrem[NBULLET] = {0};
+static int16_t bvxrem[NBULLET] = {0};        //Track remaider for smooth motion
 static int16_t bvyrem[NBULLET] = {0};
-
 static uint16_t bullet_x[NBULLET] = {0};     //X-position
 static uint16_t bullet_y[NBULLET] = {0};     //Y-position
 static int8_t bullet_status[NBULLET] = {0};  //Status of bullets
 static uint8_t bullet_c = 0;                 //Counter for bullets
 static uint16_t bullet_timer = 0;            //delay timer for new bullets
 
-// Routine for placing a single dot on the screen
+// Properties for enemy bullets
+#define NEBULLET 4 // Maximum bad-guy bullets
+#define NEBULLET_TIMER_MAX 32 // Sets interval for often the bad guys fire
+static uint16_t ebullet_x[NEBULLET] = {0};     //X-position
+static uint16_t ebullet_y[NEBULLET] = {0};     //Y-position
+static int16_t ebvxrem[NEBULLET] = {0};        //Track remaider for smooth motion
+static int16_t ebvyrem[NEBULLET] = {0};
+static uint16_t ebullet_timer[NBATTLE_MAX] = {0}; //delay timer for new bullets
+static int8_t ebullet_status[NEBULLET] = {0}; //Status of bullets
+static uint8_t ebullet_c = 0; //Counter for bullets
+
+// Routine for placing a single dot on the screen for 8bit-colour depth
 static inline void set(int16_t x, int16_t y, uint8_t colour)
 {
-    RIA.addr0 =  (x / 1) + (320 / 1 * y);
+    RIA.addr0 =  x + (SWIDTH * y);
     RIA.step0 = 0;
     // uint8_t bit = colour;
     // RIA.rw0 = bit;
@@ -175,7 +210,6 @@ static inline void set(int16_t x, int16_t y, uint8_t colour)
 
 //Functions for generating randoms
 #define swap(a, b) { uint16_t t = a; a = b; b = t; }
-
 uint16_t random(uint16_t low_limit, uint16_t high_limit)
 {
     if (low_limit > high_limit) {
@@ -278,6 +312,17 @@ static void enemy_setup()
     nsprites += nfighter;
 
     xregn(1, 0, 1, 5, 4, 0, STATION_CONFIG, nsprites, 1);
+
+
+    // Initialize status of bullets
+    for (uint8_t i = 0; i < NBULLET; i++) {
+        bullet_status[i] = -1;
+    }
+
+    for (uint8_t i = 0; i < NEBULLET; i++) {
+        ebullet_status[i] = -1;
+    }
+
 }
 
 static void battle_update()
@@ -415,19 +460,88 @@ static void fighter_update()
 
 }
 
+void battle_bullets()
+{
+    //Update bullets
+    for (uint8_t i = 0; i < NEBULLET; i++) {
+        if (ebullet_status[i] >= 0){
+            set(ebullet_x[i], ebullet_y[i], 0x00);
+            // //Check for collision
+            // bullet_spaceship(ii);
+        }
+
+        if (ebullet_status[i] >= 0){
+            bvx = sin_fix[ebullet_status[i]];
+            bvy = cos_fix[ebullet_status[i]];
+            bvxapp = ( (bvx + ebvxrem[i]) >> 7);
+            bvyapp = ( (bvy + ebvyrem[i]) >> 7);
+            ebvxrem[i] = bvx + ebvxrem[i] - bvxapp * 128; 
+            ebvyrem[i] = bvy + ebvyrem[i] - bvyapp * 128;
+            ebullet_x[i] += bvxapp - dx;
+            ebullet_y[i] += bvyapp - dy;
+
+            if (ebullet_x[i] > 0 && ebullet_x[i] < 320 && ebullet_y[i] > 0 && ebullet_y[i] < 180){
+                set(ebullet_x[i], ebullet_y[i], 0xFF);
+            } else {
+                ebullet_status[i] = -1;
+            }
+        }
+    }
+}
+
 uint8_t battle_attack()
 {
     uint8_t attack = 0;
 
     int16_t fdx; //Position of fighter relative to Earth
     int16_t fdy;
-    int8_t vx; //battle station velocity
-    int8_t vy;
-    int16_t bvxapp;
-    int16_t bvyapp;
+    int16_t bavx; //battle station velocity
+    int16_t bavy;
+    int16_t bavxapp;
+    int16_t bavyapp;
 
     for (uint8_t i = 0; i < nbattle; i++) {
 
+        
+        // Get diffs for space ship
+        fdx = x - battle_x[i] + (16 * vxapp);
+        fdy = y - battle_y[i] + (16 * vyapp);
+
+        //Fire ze missiles!
+        if (battle_x[i] > 1 && battle_x[i] < SWIDTH && battle_y[i] > 1 && battle_y[i] < SHEIGHT){
+            // printf("Battle time..");
+            if (ebullet_timer[i] > NEBULLET_TIMER_MAX){
+                ebullet_timer[i] = 0;
+
+                //Calculate angle with dxdy lookup table
+                uint16_t afdx8 = abs(fdx) >> 3;
+                uint16_t afdy8 = abs(fdy) >> 3;
+                uint8_t rib = dxdy_table[afdx8 + (afdy8 * 41)];
+                if (fdx < 0 && fdy > 0){
+                    rib = 24 - rib;
+                } else if (fdx > 0 && fdy < 0){
+                    rib = 12 - rib;
+                } else if (fdx < 0 && fdy <0){
+                    rib +=12;
+                } 
+                if (rib > 24){
+                    rib -= 24;
+                }
+
+                if (ebullet_status[ebullet_c] < 0){
+                    // printf("Bullet away.. %d %d %d %d %d \n",fdx,fdy,afdx8,afdy8,rib);
+                    ebullet_status[ebullet_c] = rib;
+                    ebullet_x[ebullet_c] = battle_x[i]+4;
+                    ebullet_y[ebullet_c] = battle_y[i]+4;
+                    ebullet_c += 1;
+                    if (ebullet_c >= NEBULLET){
+                        ebullet_c = 0;
+                    }
+                }
+            }
+        }
+
+        // Get diffs for Earth
         fdx = earth_x - battle_x[i];
         fdy = earth_y - battle_y[i];
 
@@ -436,37 +550,38 @@ uint8_t battle_attack()
                 battle_dy[i] =  0;
                 battle_xrem[i] = 0;
                 battle_yrem[i] = 0;
-                vx = 0;
-                vy = 0;
+                bavx = 0;
+                bavy = 0;
 
                 attack = +1;
 
             } else {
 
                 if (fdx > 0){
-                    vx = 32; 
+                    bavx = 128; 
                 } else {
-                    vx = -32;
+                    bavx = -128;
                 }
 
                 if (fdy > 0){
-                    vy = 32; 
+                    bavy = 128; 
                 } else {
-                    vy = -32;
+                    bavy = -128;
                 }
 
             }
 
-        bvxapp = (vx + battle_xrem[i]) >> 8;
-        bvyapp = (vy + battle_yrem[i]) >> 8;
-        battle_xrem[i] = vx + battle_xrem[i] - bvxapp * 256;
-        battle_yrem[i] = vy + battle_yrem[i] - bvyapp * 256;
-        battle_dx[i] = bvxapp;
-        battle_dy[i] = bvyapp;
+        bavxapp = (bavx + battle_xrem[i]) >> 8;
+        bavyapp = (bavy + battle_yrem[i]) >> 8;
+        battle_xrem[i] = bavx + battle_xrem[i] - bavxapp * 256;
+        battle_yrem[i] = bavy + battle_yrem[i] - bavyapp * 256;
+        battle_dx[i] = bavxapp;
+        battle_dy[i] = bavyapp;
 
     }
 
     battle_update();
+    battle_bullets();
 
     return attack;
 }
@@ -753,8 +868,8 @@ int main(void)
     int xrem = 0; //Tracking remainder for smooth motion of space ship
     int yrem = 0;
 
-    int vxapp = 0; //Applied motion to the space ship position
-    int vyapp = 0;
+    // int vxapp = 0; //Applied motion to the space ship position
+    // int vyapp = 0;
 
     uint8_t attack = 0; //enemy stopping beam
 
@@ -783,7 +898,7 @@ int main(void)
 
         ship_update();
 
-        if (update_sch%256 == 0){
+        if (update_sch%FIGHTER_RATE == 0){
             create_new_fighter();
         }
 
@@ -856,6 +971,10 @@ int main(void)
 
         }
         bullet_timer += 1;
+        for (uint8_t ii = 0; ii < NBATTLE_MAX; ii++){
+            ebullet_timer[ii] += 1;
+        }
+        
 
         //Update fighters and track attacks
         attack = fighter_attack();
@@ -927,11 +1046,6 @@ int main(void)
             earth_update(dx, dy);
 
             station_update(dx, dy);
-
-            // battle_update(dx, dy);
-
-            // dx = 0;
-            // dy = 0;
     
         }
 
