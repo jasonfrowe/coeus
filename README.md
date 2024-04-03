@@ -34,3 +34,16 @@ The source of the enemies strength.  The orbs are able to spawn a continuous arm
 - Left fire : Fire your rail gun
 - Right fire : Fire the EMP 
 
+### Development Todo: 
+
+- Add keyboard controls
+- EMP
+- Shield
+- Orb attack
+- Score
+- mini-map
+- tracker beam
+- explosions
+- ship animations
+
+
