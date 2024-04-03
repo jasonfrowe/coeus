@@ -558,15 +558,15 @@ uint8_t battle_attack()
             } else {
 
                 if (fdx > 0){
-                    bavx = 128; 
+                    bavx = 32; 
                 } else {
-                    bavx = -128;
+                    bavx = -32;
                 }
 
                 if (fdy > 0){
-                    bavy = 128; 
+                    bavy = 32; 
                 } else {
-                    bavy = -128;
+                    bavy = -32;
                 }
 
             }
