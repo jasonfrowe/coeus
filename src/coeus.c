@@ -30,6 +30,7 @@ unsigned EARTH_CONFIG;          //Earth Sprite Config - Standard
 unsigned STATION_CONFIG;        //Enemy station sprite config
 unsigned BATTLE_CONFIG;         //Enemy battle station sprite config 
 unsigned FIGHTER_CONFIG;        //Enemy fighter sprite config
+unsigned TEXT_CONFIG;           //On screen text config
 
 #define NSTATION_MAX 5  //Number of enemy battle stations
 #define NBATTLE_MAX  5  //Number of portable battle stations 
@@ -98,6 +99,11 @@ struct __VIA6522 {
     unsigned char ddra;
 };
 #define VIAp (*(volatile struct __VIA6522 *)0xFFD0)
+
+// Text configs
+
+#define NTEXT 1
+static char message[] = "SCORE";
 
 static const uint16_t vlen = 57600; // Extended Memory space for bitmap graphics (320x180 @ 8-bits)
 
@@ -373,6 +379,42 @@ static void enemy_setup()
 
     for (uint8_t i = 0; i < NEBULLET; i++) {
         ebullet_status[i] = -1;
+    }
+
+}
+
+
+static void text_setup()
+{
+
+    TEXT_CONFIG = FIGHTER_CONFIG + nfighter * sizeof(vga_mode4_sprite_t);
+    int16_t text_message_addr = TEXT_CONFIG + NTEXT * sizeof(vga_mode1_config_t);
+
+    for (uint8_t i = 0; i < NTEXT; i++) {
+
+        unsigned ptr = TEXT_CONFIG + i * sizeof(vga_mode1_config_t);
+
+        xram0_struct_set(ptr, vga_mode1_config_t, x_wrap, 0);
+        xram0_struct_set(ptr, vga_mode1_config_t, y_wrap, 0);
+        xram0_struct_set(ptr, vga_mode1_config_t, x_pos_px, 0); //Bug: first char duplicated if not set to zero
+        xram0_struct_set(ptr, vga_mode1_config_t, y_pos_px, 5);
+        xram0_struct_set(ptr, vga_mode1_config_t, width_chars, 5);
+        xram0_struct_set(ptr, vga_mode1_config_t, height_chars, 1);
+        xram0_struct_set(ptr, vga_mode1_config_t, xram_data_ptr, text_message_addr);
+        xram0_struct_set(ptr, vga_mode1_config_t, xram_palette_ptr, 0xFFFF);
+        xram0_struct_set(ptr, vga_mode1_config_t, xram_font_ptr, 0xFFFF);
+    }
+
+    // 4 parameters: text mode, 8-bit, config, plane
+    xregn(1, 0, 1, 4, 1, 3, TEXT_CONFIG, 2);
+
+    RIA.addr0 = text_message_addr;
+    RIA.step0 = 1;
+    for (uint8_t i = 0; i < sizeof(message); i++)
+    {
+        RIA.rw0 = message[i];
+        RIA.rw0 = 0xFF;
+        RIA.rw0 = 0x00;
     }
 
 }
@@ -921,6 +963,7 @@ int main(void)
     setup_stars(); // Set up stars
     earth_setup(); // Set up Earth.
     enemy_setup(); // Set up Enemies
+    text_setup();  // Set up text  
 
     // Motion of the screen
     dx = 0;
