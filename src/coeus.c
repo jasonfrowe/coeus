@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <string.h>
 // #include "usb_hid_keys.h"
 
 //World and screen sizes
@@ -103,7 +104,12 @@ struct __VIA6522 {
 // Text configs
 
 #define NTEXT 1
-static char message[] = "SCORE";
+int16_t text_message_addr;
+static char score_message[6] = "SCORE ";
+static char score_value[6] = "00000";
+#define MESSAGE_LENGTH 36
+static char message[MESSAGE_LENGTH];
+static uint16_t score = 0;
 
 static const uint16_t vlen = 57600; // Extended Memory space for bitmap graphics (320x180 @ 8-bits)
 
@@ -387,8 +393,8 @@ static void enemy_setup()
 static void text_setup()
 {
 
-    TEXT_CONFIG = FIGHTER_CONFIG + nfighter * sizeof(vga_mode4_sprite_t);
-    int16_t text_message_addr = TEXT_CONFIG + NTEXT * sizeof(vga_mode1_config_t);
+    TEXT_CONFIG = FIGHTER_CONFIG + nfighter * sizeof(vga_mode4_sprite_t); //Config address for text mode
+    text_message_addr = TEXT_CONFIG + NTEXT * sizeof(vga_mode1_config_t); //address to store text message
 
     for (uint8_t i = 0; i < NTEXT; i++) {
 
@@ -396,9 +402,9 @@ static void text_setup()
 
         xram0_struct_set(ptr, vga_mode1_config_t, x_wrap, 0);
         xram0_struct_set(ptr, vga_mode1_config_t, y_wrap, 0);
-        xram0_struct_set(ptr, vga_mode1_config_t, x_pos_px, 0); //Bug: first char duplicated if not set to zero
-        xram0_struct_set(ptr, vga_mode1_config_t, y_pos_px, 5);
-        xram0_struct_set(ptr, vga_mode1_config_t, width_chars, 5);
+        xram0_struct_set(ptr, vga_mode1_config_t, x_pos_px, 1); //Bug: first char duplicated if not set to zero
+        xram0_struct_set(ptr, vga_mode1_config_t, y_pos_px, 1);
+        xram0_struct_set(ptr, vga_mode1_config_t, width_chars, MESSAGE_LENGTH);
         xram0_struct_set(ptr, vga_mode1_config_t, height_chars, 1);
         xram0_struct_set(ptr, vga_mode1_config_t, xram_data_ptr, text_message_addr);
         xram0_struct_set(ptr, vga_mode1_config_t, xram_palette_ptr, 0xFFFF);
@@ -408,13 +414,60 @@ static void text_setup()
     // 4 parameters: text mode, 8-bit, config, plane
     xregn(1, 0, 1, 4, 1, 3, TEXT_CONFIG, 2);
 
+
+    snprintf(message, MESSAGE_LENGTH, " SCORE %05d ", score);
+ 
     RIA.addr0 = text_message_addr;
     RIA.step0 = 1;
     for (uint8_t i = 0; i < sizeof(message); i++)
     {
-        RIA.rw0 = message[i];
-        RIA.rw0 = 0xFF;
-        RIA.rw0 = 0x00;
+         if (i > 13 && i < 22){
+            RIA.rw0 = 0xDB; //block
+            RIA.rw0 = 0xD0; 
+            RIA.rw0 = 0x10;
+        } else if (i > 22 && i < 31) {
+            RIA.rw0 = 0xDB; // block
+            RIA.rw0 = 0xB2;
+            RIA.rw0 = 0x10;
+        } else if (i > 32) {
+            RIA.rw0 = 0x99; //silly bomb symbol
+            RIA.rw0 = 0xA2;
+            RIA.rw0 = 0x00;
+        } else {
+            RIA.rw0 = message[i];
+            RIA.rw0 = 0xE0;
+            RIA.rw0 = 0x00;
+        }
+    }
+
+}
+
+static void update_score()
+{
+
+    snprintf(message, MESSAGE_LENGTH, " SCORE %05d ", score);
+
+    RIA.addr0 = text_message_addr;
+    RIA.step0 = 1;
+    for (uint8_t i = 0; i < sizeof(message); i++)
+    {
+         if (i > 13 && i < 22){
+            RIA.rw0 = 0xDB; //block
+            RIA.rw0 = 0xD0; 
+            RIA.rw0 = 0x10;
+        } else if (i > 22 && i < 31) {
+            RIA.rw0 = 0xDB; // block
+            RIA.rw0 = 0xB2;
+            RIA.rw0 = 0x10;
+        } else if (i > 32) {
+            RIA.rw0 = 0x99; //silly bomb symbol
+            RIA.rw0 = 0xA2;
+            RIA.rw0 = 0x00;
+        } else {
+            RIA.rw0 = message[i];
+            RIA.rw0 = 0xE0;
+            RIA.rw0 = 0x00;
+        }
     }
 
 }
@@ -779,6 +832,8 @@ static void bullet_fighter(uint8_t b_id)
                 fighter_status[i] = 0;
                 fighter_x[i] = -10; //Move sprite off-screen
                 fighter_y[i] = -10;
+                score += 5;
+                update_score();
         }
     } 
 }
