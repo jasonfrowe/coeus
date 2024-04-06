@@ -40,9 +40,9 @@ The source of the enemies strength.  The orbs are able to spawn a continuous arm
 - EMP
 - Shield
 - Orb attack
-- Score
+- ~~Score~~
 - mini-map
-- tracker beam
+- ~~tracker beam~~
 - explosions
 - ship animations
 
