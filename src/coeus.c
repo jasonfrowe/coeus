@@ -54,6 +54,10 @@ static uint8_t nfighter = NFIGHTER_MAX; //
 static uint8_t fighter_status[NFIGHTER_MAX] = {0}; //Status 
 static int16_t fighter_x[NFIGHTER_MAX] = {0}; 
 static int16_t fighter_y[NFIGHTER_MAX] = {0}; 
+static int16_t fighter_lx1old[NFIGHTER_MAX] = {0}; 
+static int16_t fighter_lx2old[NFIGHTER_MAX] = {0}; 
+static int16_t fighter_ly1old[NFIGHTER_MAX] = {0}; 
+static int16_t fighter_ly2old[NFIGHTER_MAX] = {0}; 
 static int16_t fighter_dx[NFIGHTER_MAX] = {0}; 
 static int16_t fighter_dy[NFIGHTER_MAX] = {0}; 
 static int16_t fighter_vx[NFIGHTER_MAX] = {0}; 
@@ -189,7 +193,7 @@ static uint16_t bullet_timer = 0;            //delay timer for new bullets
 
 // Properties for enemy bullets
 #define NEBULLET 4 // Maximum bad-guy bullets
-#define NEBULLET_TIMER_MAX 32 // Sets interval for often the bad guys fire
+#define NEBULLET_TIMER_MAX 33 // Sets interval for often the bad guys fire
 static uint16_t ebullet_x[NEBULLET] = {0};     //X-position
 static uint16_t ebullet_y[NEBULLET] = {0};     //Y-position
 static int16_t ebvxrem[NEBULLET] = {0};        //Track remaider for smooth motion
@@ -202,9 +206,7 @@ static uint8_t ebullet_c = 0; //Counter for bullets
 static inline void set(int16_t x, int16_t y, uint8_t colour)
 {
     RIA.addr0 =  x + (SWIDTH * y);
-    RIA.step0 = 0;
-    // uint8_t bit = colour;
-    // RIA.rw0 = bit;
+    RIA.step0 = 1;
     RIA.rw0 = colour;
 }
 
@@ -217,6 +219,54 @@ uint16_t random(uint16_t low_limit, uint16_t high_limit)
     }
 
     return (uint16_t)((rand() % (high_limit-low_limit)) + low_limit);
+}
+
+// ---------------------------------------------------------------------------
+// Draw a straight line from (x0,y0) to (x1,y1) with given color
+// using Bresenham's algorithm
+// ---------------------------------------------------------------------------
+void draw_line(uint16_t colour, uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
+{
+    int16_t dx, dy;
+    int16_t err;
+    int16_t ystep;
+    int16_t steep = abs((int16_t)y1 - (int16_t)y0) > abs((int16_t)x1 - (int16_t)x0);
+
+    if (steep) {
+        swap(x0, y0);
+        swap(x1, y1);
+    }
+
+    if (x0 > x1) {
+        swap(x0, x1);
+        swap(y0, y1);
+    }
+
+    dx = x1 - x0;
+    dy = abs((int16_t)y1 - (int16_t)y0);
+
+    err = dx / 2;
+
+    if (y0 < y1) {
+        ystep = 1;
+    } else {
+        ystep = -1;
+    }
+
+    for (; x0<=x1; x0++) {
+        if (steep) {
+            set(y0, x0, colour);
+        } else {
+            set(x0, y0, colour);
+        }
+
+        err -= dy;
+
+        if (err < 0) {
+            y0 += ystep;
+            err += dx;
+        }
+    }
 }
 
 static void earth_setup()
@@ -264,6 +314,8 @@ static void enemy_setup()
     BATTLE_CONFIG = STATION_CONFIG + nstation * sizeof(vga_mode4_sprite_t);
 
     for (uint8_t i = 0; i < nbattle; i++) {
+
+        ebullet_timer[i] = 1 << i;
 
         unsigned ptr = BATTLE_CONFIG + i * sizeof(vga_mode4_sprite_t);
 
@@ -597,7 +649,7 @@ uint8_t fighter_attack()
 
     for (uint8_t i = 0; i < nfighter; i++) {
 
-        if (fighter_status[i]){
+        if (fighter_status[i] > 0){
 
             fdx = x - fighter_x[i];
             fdy = y - fighter_y[i];
@@ -608,7 +660,24 @@ uint8_t fighter_attack()
                 fighter_xrem[i] = 0;
                 fighter_yrem[i] = 0;
 
-                attack = +1;
+                attack = +1; // Slow down the good-guy space craft
+                if (fighter_status[i] == 1) {
+                    draw_line(0xBE, x+4, y+4, fighter_x[i]+2, fighter_y[i]+2);
+                    fighter_lx1old[i] = x + 4;
+                    fighter_ly1old[i] = y + 4;
+                    fighter_lx2old[i] = fighter_x[i] + 2;
+                    fighter_ly2old[i] = fighter_y[i] + 2;
+                    fighter_status[i] = 2;
+                } else if (fighter_status[i] == 2) {
+                    draw_line(0x00, fighter_lx1old[i], fighter_ly1old[i], fighter_lx2old[i], fighter_ly2old[i]);
+                    fighter_status[i] = 3;
+                } else {
+                    fighter_status[i] += 1;
+                    if (fighter_status[i] > 32){
+                        fighter_status[i] = 1;
+                    }
+                }
+                
 
             } else {
                 if (update_sch%30 == 0){ 
