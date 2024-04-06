@@ -729,6 +729,10 @@ static void bullet_fighter(uint8_t b_id)
             fighter_y[i] < bullet_y[b_id] + 2 &&
             fighter_y[i] + 6 > bullet_y[b_id])
         {
+                // Catch case of fighter destroyed before we remove beam from screen
+                if (fighter_status[i] == 2) {
+                    draw_line(0x00, fighter_lx1old[i], fighter_ly1old[i], fighter_lx2old[i], fighter_ly2old[i]);
+                }
                 bullet_status[b_id] = -1;
                 fighter_status[i] = 0;
                 fighter_x[i] = -10; //Move sprite off-screen
