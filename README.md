@@ -57,22 +57,23 @@ Code written for LLVM-MOS compiler.
 
 VIA used to interface with a 7800 Atari Joystick.  Pico adapter required.
 
-//Atari-7800 -> PICO GPIO Pins
-#define LF 27 // Left-Fire
-#define RF 26 // Right-Fire
-#define FF 22 // Fire
-#define RR 21 // Right
-#define LL 20 // Left
-#define DD 19 // Down
-#define UP 18 // Up
+//Atari-7800 -> PICO GPIO Pins  
+#define LF 27 // Left-Fire  
+#define RF 26 // Right-Fire  
+#define FF 22 // Fire  
+#define RR 21 // Right  
+#define LL 20 // Left  
+#define DD 19 // Down  
+#define UP 18 // Up  
 
-//RP6502 / PICO GPIO Pins
-#define PA0 0 // Up
-#define PA1 1 // Down
-#define PA2 2 // Left
-#define PA3 3 // Right
-#define PA4 4 // Fire
-#define PA5 5 // Right-Fire
-#define PA6 6 // Left-Fire
-#define PA7 7 // Held low.
+
+//RP6502 / PICO GPIO Pins  
+#define PA0 0 // Up  
+#define PA1 1 // Down  
+#define PA2 2 // Left  
+#define PA3 3 // Right  
+#define PA4 4 // Fire  
+#define PA5 5 // Right-Fire  
+#define PA6 6 // Left-Fire  
+#define PA7 7 // Held low.  
 
