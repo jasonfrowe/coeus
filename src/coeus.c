@@ -1132,7 +1132,7 @@ int main(void)
             update_score();
         }
 
-        // Arcade Stick via GPIO ///
+        // =====  ATARI 7800 Arcade Stick via GPIO ===== //
 
         // We only periodically sample left/right to make rotation easier to control
         if (iframe >= iframe_old){
@@ -1310,5 +1310,5 @@ int main(void)
     update_sch += 1;
             
 
-    } //end of infinite loop
+    } //end of infinite game loop
 }// end of main
