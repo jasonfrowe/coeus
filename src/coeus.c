@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include <string.h>
+// #include <string.h>
 // #include "usb_hid_keys.h"
 
 //World and screen sizes
@@ -176,7 +176,7 @@ static const uint8_t ri_max = 23; // max rotations
 // Earth initial position
 static int16_t earth_x = SWIDTH/2 - 16;
 static int16_t earth_y = SHEIGHT/2 - 16;
-int16_t earth_xc = SWIDTH/2;
+static int16_t earth_xc = SWIDTH/2;
 static int16_t earth_yc = SHEIGHT/2;
 
 // Initial position and velocity of spacecraft
@@ -186,6 +186,8 @@ static int16_t vx = 0;   //Requested velocity of spacecraft.
 static int16_t vy = 0;
 static int16_t vxapp = 0;   //Applied velocity of spacecraft.
 static int16_t vyapp = 0;
+static int16_t health = 255; //Ship health
+static int16_t energy = 255; //Ship energy
 
 // Properties for bullets
 #define NBULLET 8  // maximum good-guy bullets
@@ -447,27 +449,68 @@ static void update_score()
 
     snprintf(message, MESSAGE_LENGTH, " SCORE %05d ", score);
 
+    if (energy < 0){
+        energy = 255;
+    }
+
+    if (health < 0){
+        health = 255;
+    }
+
     RIA.addr0 = text_message_addr;
     RIA.step0 = 1;
-    for (uint8_t i = 0; i < sizeof(message); i++)
-    {
-         if (i > 13 && i < 22){
-            RIA.rw0 = 0xDB; //block
-            RIA.rw0 = 0xD0; 
-            RIA.rw0 = 0x10;
-        } else if (i > 22 && i < 31) {
-            RIA.rw0 = 0xDB; // block
-            RIA.rw0 = 0xB2;
-            RIA.rw0 = 0x10;
-        } else if (i > 32) {
-            RIA.rw0 = 0x99; //silly bomb symbol
-            RIA.rw0 = 0xA2;
-            RIA.rw0 = 0x00;
-        } else {
-            RIA.rw0 = message[i];
-            RIA.rw0 = 0xE0;
-            RIA.rw0 = 0x00;
-        }
+
+    uint8_t i;
+    uint8_t j;
+
+    for (i = 0; i < 14; i++){
+        RIA.rw0 = message[i];
+        RIA.rw0 = 0xE0;
+        RIA.rw0 = 0x00;
+    }
+
+    j = (health >> 5) + 1;
+    for (i = 14; i < 14 + j; i++){
+        RIA.rw0 = 0xDB; //block for health
+        RIA.rw0 = 0xD0; 
+        RIA.rw0 = 0x10;
+    }
+
+    for (i = 14 + j; i < 22; i++){
+        RIA.rw0 = 0xDB; //block for no health
+        RIA.rw0 = 0x12; 
+        RIA.rw0 = 0x10;
+    }
+
+    RIA.rw0 = message[22];
+    RIA.rw0 = 0xE0;
+    RIA.rw0 = 0x00;
+
+    j = (energy >> 5) + 1;
+    for (i = 23; i < 23 + j; i++){
+        RIA.rw0 = 0xDB; //block for energy
+        RIA.rw0 = 0xB2; 
+        RIA.rw0 = 0x10;
+    }
+
+    for (i = 23 + j; i < 31; i++){
+        RIA.rw0 = 0xDB; //block for no energy
+        RIA.rw0 = 0x12; 
+        RIA.rw0 = 0x10;
+    }
+
+    RIA.rw0 = message[31];
+    RIA.rw0 = 0xE0;
+    RIA.rw0 = 0x00;
+
+    RIA.rw0 = message[32];
+    RIA.rw0 = 0xE0;
+    RIA.rw0 = 0x00;
+
+    for (i = 33; i < MESSAGE_LENGTH; i++){
+        RIA.rw0 = 0x99; //block for energy
+        RIA.rw0 = 0xA2; 
+        RIA.rw0 = 0x00;
     }
 
 }
@@ -756,7 +799,12 @@ uint8_t fighter_attack()
                 fighter_yrem[i] = 0;
 
                 attack = +1; // Slow down the good-guy space craft
+
                 if (fighter_status[i] == 1) {
+                    energy -= 2; // Remove energy
+                    health -= 1; // Remove health
+                    update_score(); 
+
                     draw_line(0xBE, x+4, y+4, fighter_x[i]+2, fighter_y[i]+2);
                     fighter_lx1old[i] = x + 4;
                     fighter_ly1old[i] = y + 4;
@@ -1071,6 +1119,17 @@ int main(void)
 
         if (update_sch%FIGHTER_RATE == 0){
             create_new_fighter();
+        }
+
+        // Health and energy regeneration rate
+        if (update_sch % 32 == 0){
+            if (health < 255){
+                health += 1;
+            }
+            if (energy < 255){
+                energy += 2;
+            }
+            update_score();
         }
 
         // Arcade Stick via GPIO ///

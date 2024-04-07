@@ -45,5 +45,6 @@ The source of the enemies strength.  The orbs are able to spawn a continuous arm
 - ~~tracker beam~~
 - explosions
 - ship animations
+- ~~add ship energy and health~~
 
 
