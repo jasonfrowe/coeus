@@ -20,4 +20,5 @@ rp6502_executable(coeus
 
 target_sources(coeus PRIVATE
     src/coeus.c
+    src/random.c
 )
