@@ -1,64 +1,79 @@
-# RP6502 VSCode Scaffolding for LLVM-MOS
+# Coeus
 
-This is scaffolding for a new Picocomputer 6502 software project.
+Mysterious green orbs have appears at the edges of the solar system.  Only visible by visual sight, these orbits have proven imprevious to remote scans.  
 
-### LLVM PATH notes
+Recently a fleet of small fighters emerged from the orbs setting up a blockade halting any movement.  Additionally, mobile battle stations have also spawed and are marching towards the Earth having already destroyed Mars.  If these battle stations reach the Earth it will spell certain doom for human-kind.
 
-LLVM-MOS must be in your PATH. However, this may conflict with other LLVM
-installations, like the one that comes with your operating system.
-In that case, you can adjust the path for only CMake with a VSCode setting.
-Add a file `.vscode/settings.json` with the following contents. Adjust the
-path for where you installed LLVM-MOS.
-```
-{
-    "cmake.environment": {
-        "PATH": "~/llvm-mos/bin:${env:PATH}"
-    }
-}
-```
+### Pilots Needed
 
-### Linux Tools Install:
- * [VSCode](https://code.visualstudio.com/). This has its own installer.
- * An install of [LLVM-MOS](https://llvm-mos.org/wiki/Welcome).
-   See PATH notes above.
- * The following tools installed from your package manager:
-    * `sudo apt-get install cmake python3 pip git build-essential`
-    * `pip install pyserial`
+Action in research labs across the globe under the code name Coeus have manufactored the Cerberus spacecraft.  Equiped with a rapid action thruster and powerful railgun, this ship should be capable of breaking the enemy blockade.  Your ship is also equiped an energy system to support a shield and a short-range electromagnetic pulse (EMP) that is capable of disabling and destroying the enemy.  Scientists believe that a close approach to the distant orbs may reveal a resonance weakness.  If this frequency can be discovered your ship can reconfigure its weapons to quickly shatter the orbits.
 
-### Windows Tools Install:
- * [VSCode](https://code.visualstudio.com/). This has its own installer.
- * An install of [LLVM-MOS](https://llvm-mos.org/wiki/Welcome).
-   See PATH notes above.
- * Install python by typing `python3` which will launch the Microsoft Store
-   where you start the install. If python runs, this has already been done,
-   exit python with Ctrl-Z plus Return.
- * Install the python serial library with `pip install pyserial`.
- * `winget install -e --id Kitware.CMake`.
- * `winget install -e --id GnuWin32.Make`.
-    Add "C:\Program Files (x86)\GnuWin32\bin" to your path.
- * `winget install -e --id Git.Git`.
+Jump in the newly created Cerberus Spacecraft.   Break the blockage, defeat the battle stations and destroy all the orbs to save the Earth!  
 
-### Getting Started:
-Go to the [GitHub template](https://github.com/picocomputer/vscode-llvm-mos)
-and select "Use this template" then "Create a new repository". GitHub will
-make a clean project for you to start with. Then you can download the
-repository and open the files.
+### Small fighters:
 
-```
-$ git clone [path_to_github]
-$ cd [to_where_it_cloned]
-$ code .
-```
+The enemy has a regenerating fleet of small fighters that will relentously hunt your ship.  The fighters are equiped with a tracker beam to slow your ship and drain energy from your ship.  This delays the recharge of your EMP and makes you extremely vunerable to Battlestation attacks.  Your railgun will make quick work of these drones.
 
-Install the extensions and choose the default or obvious choice if VSCode
-prompts you. Choose "[Unspecified]" for the CMake kit.
+### Battle Stations:
 
-"Start Debugging" (F5) will build your project and upload it to the
-Picocomputer over a USB cable plugged into the Pico VGA. There is no debugger
-for the 6502; this process will exit immediately after the upload.
-If the default communications device doesn't work, edit ".rp6502" in the
-project root folder. This file will be created the first time you
-"Start Debugging" and will be ignored by git.
+Slowly moving tanks equiped with a physical canon that can make quick work of your ship if you are not careful. The only way to destroy these bemouths is by deploying your EMP.  Once disabled, a Battlestation will short self-destruct.  Do not be nearby when this happens.
 
-Edit CMakeLists.txt to add new source and asset files. It's
-pretty normal C/ASM development from here on.
+It is imperative that you do not let any battle station reach the Earth.  Once in range, a battle station is fully capable of destroying all life in a short timescale.  
+
+### Mysterious Orbs:
+
+The source of the enemies strength.  The orbs are able to spawn a continuous army of fighters and battle stations.  They must be destroyed.  Fly close to the orbs to complete a frequency sweep to discover any weakness, then exploit that weakness to scatter the orbs.
+
+### Controlling your ship.
+
+- Up : Apply thrust in the direction you are pointing
+- Left : rotate Counter-clockwise
+- Right : rotate Clockwise
+- Down : Deploy your shield
+
+- Left fire : Fire your rail gun
+- Right fire : Fire the EMP 
+
+### Development Todo: 
+
+- Add keyboard controls
+- EMP
+- Shield
+- Orb attack
+- battle station bullet damage
+- mini-map
+- explosions
+- ship animations
+- add game start
+- add game over
+- add lives counter
+- ~~Score~~
+- ~~add ship energy and health~~
+- ~~tracker beam~~
+
+### Compiler and Usage Note
+
+Code written for LLVM-MOS compiler.
+
+VIA used to interface with a 7800 Atari Joystick.  Pico adapter required.
+
+//Atari-7800 -> PICO GPIO Pins  
+#define LF 27 // Left-Fire  
+#define RF 26 // Right-Fire  
+#define FF 22 // Fire  
+#define RR 21 // Right  
+#define LL 20 // Left  
+#define DD 19 // Down  
+#define UP 18 // Up  
+
+
+//RP6502 / PICO GPIO Pins  
+#define PA0 0 // Up  
+#define PA1 1 // Down  
+#define PA2 2 // Left  
+#define PA3 3 // Right  
+#define PA4 4 // Fire  
+#define PA5 5 // Right-Fire  
+#define PA6 6 // Left-Fire  
+#define PA7 7 // Held low.  
+
