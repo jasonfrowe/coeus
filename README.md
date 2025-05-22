@@ -36,7 +36,7 @@ The source of the enemies strength.  The orbs are able to spawn a continuous arm
 
 ### Development Todo: 
 
-- Add keyboard controls
+- ~~Add keyboard controls~~
 - EMP
 - Shield
 - Orb attack
