@@ -19,8 +19,23 @@ static int16_t dy = 0;
 #define BATTLE_DATA     0xEB80  //Enemy battle station Sprite (8x8)
 #define FIGHTER_DATA    0xEC00  //Enemy fighter Sprite (4x4)
 
+// USB KEYBOARD
+#define KEYBOARD_INPUT  0xEC20  // 0xFF10U   // KEYBOARD_BYTES (32 bytes, 256 bits) of key press bitmask data
+// 256 bytes HID code max, stored in 32 uint8
+#define KEYBOARD_BYTES 32
+// keystates[code>>3] gets contents from correct byte in array
+// 1 << (code&7) moves a 1 into proper position to mask with byte contents
+// final & gives 1 if key is pressed, 0 if not
+#define key(code) (keystates[code >> 3] & (1 << (code & 7)))
+uint8_t keystates[KEYBOARD_BYTES] = {0};
+
+bool handled_key;
+
+#define key(code) (keystates[code >> 3] & (1 << (code & 7)))
+
+
 //XRAM Memory addresses
-#define VGA_CONFIG_START 0xEC20 //Start of graphic config addresses
+#define VGA_CONFIG_START 0xEC50 //Start of graphic config addresses
 unsigned BITMAP_CONFIG;         //Bitmap Config 
 unsigned SPACECRAFT_CONFIG;     //Spacecraft Sprite Config - Affine 
 unsigned EARTH_CONFIG;          //Earth Sprite Config - Standard 

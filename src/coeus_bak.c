@@ -1,10 +1,9 @@
 #include <rp6502.h>
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 // #include <string.h>
-#include "usb_hid_keys.h"
+// #include "usb_hid_keys.h"
 
 #include "definitions.h"
 #include "random.h"
@@ -842,10 +841,6 @@ int main(void)
 
     VIAp.ddra = 0; //set GPIO as input (probably only need to do once...)
 
-    // Turn on USB keyboard I/O
-    // xreg_ria_keyboard(KEYBOARD_INPUT);
-    xregn( 0, 0, 0, 1, KEYBOARD_INPUT);
-
     while (1) { //Infinite Game Loop
 
         if (RIA.vsync == v) //Run updates on V-sync.  Ideally this is 1/60 s 
@@ -872,51 +867,12 @@ int main(void)
             update_score();
         }
 
-        // ===== Keyboard Controls ===== //
-        RIA.addr0 = KEYBOARD_INPUT;
-        RIA.step0 = 2;
-        keystates[0] = RIA.rw0;
-        RIA.step0 = 1;
-        keystates[2] = RIA.rw0;
-        RIA.step0 = 2; 
-        keystates[3] = RIA.rw0;                                                
-        RIA.step0 = 4;                                                
-        keystates[5] = RIA.rw0;
-        RIA.step0 = 0;                        
-        keystates[9] = RIA.rw0;
-        // don't knpw why but have to reset address or add delay to make it (reading 10) work 
-        RIA.addr0 = KEYBOARD_INPUT + 10;                                                   
-        keystates[10] = RIA.rw0; 
-
         // =====  ATARI 7800 Arcade Stick via GPIO ===== //
 
         // We only periodically sample left/right to make rotation easier to control
         if (iframe >= iframe_old){
             iframe = 0;
 
-            // Check keyboard
-            if (!(keystates[0] & 1)) {
-                if (key(KEY_LEFT)){ //Rotate left                      
-                    // update rotation
-                    if (ri == ri_max){
-                        ri = 0;
-                    } else {
-                        ri += 1;
-                    } 
-                }
-
-                if (key(KEY_RIGHT)){ // Rotate right
-                    // update rotation
-                    if (ri == 0){
-                        ri = ri_max;
-                    } else {
-                        ri -= 1;
-                    }
-                }
-
-            }
-
-            // Check joystick controller
             if (VIAp.pa > 0){
 
                 //Rotate counter
@@ -940,39 +896,7 @@ int main(void)
 
             }
         }
-
-
         iframe+=1;
-
-        if (!(keystates[0] & 1)) {
-
-            if (key(KEY_ESC)){
-                exit(0);
-            }
-
-            if (key(KEY_UP)){ // Up direction -- applies thrust..
-                vx = -sin_fix[ri];
-                vy = -cos_fix[ri];
-                tdelay = 0;
-            }
-
-            // Left fire button -- Bullets 
-            if (key(KEY_SPACE)){
-                if (bullet_timer > NBULLET_TIMER_MAX){
-                    bullet_timer = 0;
-                    if (bullet_status[bullet_c] < 0){
-                        bullet_status[bullet_c] = ri;
-                        bullet_x[bullet_c] = x+4;
-                        bullet_y[bullet_c] = y+4;
-                        bullet_c += 1;
-                        if (bullet_c >= NBULLET){
-                            bullet_c = 0;
-                        }
-                    }
-                }
-            } 
-
-        }
 
         if (VIAp.pa > 0){ //test if joystick has input
             // Up direction -- applies thrust..
@@ -1011,7 +935,6 @@ int main(void)
             }
 
         }
-
         bullet_timer += 1;
         for (uint8_t ii = 0; ii < NBATTLE_MAX; ii++){
             ebullet_timer[ii] += 1;

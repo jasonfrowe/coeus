@@ -17,4 +17,7 @@
         "PATH": "~/Software/rp6502/llvm-mos/bin:${env:PATH}"
     },
     "C_Cpp.errorSquiggles": "disabled",
+    "files.associations": {
+        "usb_hid_keys.h": "c"
+    },
 }
