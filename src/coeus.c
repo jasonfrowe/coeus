@@ -386,6 +386,20 @@ static void fighter_update()
 
 }
 
+static void bullet_spaceship(uint8_t b_id)
+{
+    if (x      < ebullet_x[b_id] + 2 &&
+        x + 10 > ebullet_x[b_id]     &&
+        y      < ebullet_y[b_id] + 2 &&
+        y + 10 > ebullet_y[b_id])
+    {
+        ebullet_status[b_id] = -1;
+        energy -= 30;
+        health -= 30;
+        update_score();
+    }
+}
+
 void battle_bullets()
 {
     //Update bullets
@@ -393,7 +407,7 @@ void battle_bullets()
         if (ebullet_status[i] >= 0){
             set(ebullet_x[i], ebullet_y[i], 0x00);
             // //Check for collision
-            // bullet_spaceship(ii);
+            bullet_spaceship(i);
         }
 
         if (ebullet_status[i] >= 0){
